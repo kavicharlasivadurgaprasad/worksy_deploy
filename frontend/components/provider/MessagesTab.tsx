@@ -40,8 +40,15 @@ function initials(name: string): string {
   return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?';
 }
 
-function Avatar({ name, url, size = 'md' }: { name: string; url: string | null; size?: 'sm' | 'lg' }) {
-  const dims = size === 'lg' ? 'w-13 h-13 sm:w-14 sm:h-14 text-base' : 'w-10 h-10 text-sm';
+function Avatar({
+  name,
+  url,
+  size = 'md',
+}: {
+  name: string;
+  url: string | null;
+  size?: 'sm' | 'md' | 'lg';
+}) {  const dims = size === 'lg' ? 'w-13 h-13 sm:w-14 sm:h-14 text-base' : 'w-10 h-10 text-sm';
   if (url) {
     return <img src={url} alt={name} className={`${dims} rounded-2xl object-cover border border-stone-200`} />;
   }
