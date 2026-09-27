@@ -1,0 +1,25 @@
+# Maven
+target/
+
+# Maven wrapper generated files
+.mvn/timing.properties
+
+# Java
+*.class
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

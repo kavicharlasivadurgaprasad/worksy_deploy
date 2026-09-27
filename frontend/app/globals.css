@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #08080A;
+  color: #EDEDED;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+::selection {
+  background-color: #3f3f46;
+  color: #ffffff;
+}
+
+.rule {
+  border-color: currentColor;
+  opacity: 0.14;
+}
+
+.rule-brass {
+  border-color: #ffffff;
+}
+
+/* Ticket-style perforation divider */
+.perforation {
+  background-image: radial-gradient(circle, currentColor 1.5px, transparent 1.5px);
+  background-size: 10px 2px;
+  background-repeat: repeat-x;
+  background-position: center;
+  opacity: 0.25;
+  height: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
