@@ -1,6 +1,7 @@
 package com.example.worsi_backend.websocket;
 
 import com.example.worsi_backend.security.JwtUtil;
+import com.example.worsi_backend.security.TokenRevocationService;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
@@ -26,9 +27,11 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
     public static final String USER_ID_ATTRIBUTE = "userId";
 
     private final JwtUtil jwtUtil;
+    private final TokenRevocationService tokenRevocationService;
 
-    public JwtHandshakeInterceptor(JwtUtil jwtUtil) {
+    public JwtHandshakeInterceptor(JwtUtil jwtUtil, TokenRevocationService tokenRevocationService) {
         this.jwtUtil = jwtUtil;
+        this.tokenRevocationService = tokenRevocationService;
     }
 
     @Override
@@ -36,7 +39,7 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
                                     WebSocketHandler wsHandler, Map<String, Object> attributes) {
         String token = extractToken(request);
 
-        if (token == null || !jwtUtil.isTokenValid(token)) {
+        if (token == null || !jwtUtil.isTokenValid(token) || tokenRevocationService.isRevoked(token)) {
             response.setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
             return false;
         }

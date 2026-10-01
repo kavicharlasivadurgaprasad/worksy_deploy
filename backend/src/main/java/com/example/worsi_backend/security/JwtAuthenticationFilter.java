@@ -18,9 +18,11 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final TokenRevocationService tokenRevocationService;
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil) {
+    public JwtAuthenticationFilter(JwtUtil jwtUtil, TokenRevocationService tokenRevocationService) {
         this.jwtUtil = jwtUtil;
+        this.tokenRevocationService = tokenRevocationService;
     }
 
     @Override
@@ -34,7 +36,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
 
-            if (jwtUtil.isTokenValid(token)) {
+            // A token issued before the user's last password reset is treated as no token at all.
+            if (jwtUtil.isTokenValid(token) && !tokenRevocationService.isRevoked(token)) {
                 Long userId = jwtUtil.extractUserId(token);
                 String role = jwtUtil.extractRole(token);
 

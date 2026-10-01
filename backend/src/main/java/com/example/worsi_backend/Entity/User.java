@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -67,4 +68,11 @@ import lombok.Setter;
 
         @Column(name = "phone_verified", nullable = false)
         private boolean phoneVerified = false;
+
+        /**
+         * Set when the password is reset via the forgot-password flow. JWTs issued before this
+         * instant are rejected (see TokenRevocationService). NULL = never reset, nothing revoked.
+         */
+        @Column(name = "password_changed_at")
+        private LocalDateTime passwordChangedAt;
     }

@@ -7,17 +7,32 @@ import com.example.worsi_backend.Exception.BadRequestException;
 import com.example.worsi_backend.Exception.ForbiddenException;
 import com.example.worsi_backend.Exception.ResourceNotFoundException;
 import com.example.worsi_backend.repository.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
 @Transactional
 public class BookingService {
+
+    /** Time zone in which "today" and "now" are evaluated for bookings. Override with APP_TIMEZONE / app.timezone. */
+    @Value("${app.timezone:Asia/Kolkata}")
+    private String appTimezone;
+
+    /**
+     * Same-day bookings are accepted only before this hour (24-hour clock, application time zone).
+     * Default 12 = bookings for today are open until 12:00 PM. Override with app.booking.same-day-cutoff-hour.
+     */
+    @Value("${app.booking.same-day-cutoff-hour:12}")
+    private int sameDayCutoffHour;
 
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
@@ -64,9 +79,7 @@ public class BookingService {
             throw new ForbiddenException("Address does not belong to this customer");
         }
 
-        if (request.getDate().isBefore(LocalDate.now())) {
-            throw new IllegalArgumentException("Booking date cannot be in the past");
-        }
+        validateNotInPast(request.getDate(), request.getTimeSlot());
 
         // Service has no provider FK in the schema, so the only integrity rule available is that a
         // provider can only be booked for services in their own category.
@@ -189,6 +202,33 @@ public class BookingService {
         providerProfileRepository.save(provider);
 
         return toProviderResponse(bookingRepository.save(booking));
+    }
+
+    /**
+     * Booking-date rules ("today" and "now" are taken in the application time zone so the check does
+     * not depend on the server's default zone):
+     *   - a date before today is rejected;
+     *   - a booking for today is accepted until the same-day cutoff (12:00 PM by default), for any
+     *     time slot of the day, and rejected from the cutoff onwards;
+     *   - any future date is accepted.
+     */
+    private void validateNotInPast(LocalDate date, String timeSlot) {
+        LocalDateTime now = LocalDateTime.now(ZoneId.of(appTimezone));
+        LocalDate today = now.toLocalDate();
+
+        if (date.isBefore(today)) {
+            throw new IllegalArgumentException("Booking date cannot be in the past");
+        }
+
+        if (date.isEqual(today) && !now.toLocalTime().isBefore(LocalTime.of(sameDayCutoffHour, 0))) {
+            throw new IllegalArgumentException(
+                    "Same-day bookings are closed after " + formatCutoff() + ". Please choose a later date.");
+        }
+    }
+
+    private String formatCutoff() {
+        int h = sameDayCutoffHour % 12 == 0 ? 12 : sameDayCutoffHour % 12;
+        return h + ":00 " + (sameDayCutoffHour < 12 ? "AM" : "PM");
     }
 
     private String generateOtp() {

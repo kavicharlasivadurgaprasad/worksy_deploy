@@ -10,6 +10,7 @@ import com.example.worsi_backend.Entity.AuthProvider;
 import com.example.worsi_backend.Entity.Role;
 import com.example.worsi_backend.Entity.User;
 import com.example.worsi_backend.Exception.BadRequestException;
+import com.example.worsi_backend.Exception.ForbiddenException;
 import com.example.worsi_backend.Exception.UnauthorizedException;
 import com.example.worsi_backend.repository.UserRepository;
 import com.example.worsi_backend.security.JwtUtil;
@@ -125,6 +126,15 @@ public class AuthService {
      *      different provider and later sign in with this one),
      *   3) otherwise a brand-new account.
      * Never overwrites an existing user's role, password or already-set profile fields.
+     *
+     * Role handling (the role the user picked on the Customer/Provider login screen arrives as
+     * {@code requestedRole}):
+     *   - An existing account keeps its stored role. If the caller explicitly asked for a
+     *     different role, the login is rejected (403) instead of silently opening the other
+     *     role's account. This is checked BEFORE any provider id is linked to the account.
+     *   - A brand-new account is created with exactly the requested role. If no role was sent we
+     *     fail with 400 rather than guessing CUSTOMER, so a Provider signup can never be
+     *     downgraded to Customer by accident.
      */
     private User findOrCreateOAuthUser(AuthProvider provider,
                                         OidcIdentity identity,
@@ -134,12 +144,14 @@ public class AuthService {
 
         User existing = findByProviderId.apply(identity.subject()).orElse(null);
         if (existing != null) {
+            assertRoleMatches(existing, requestedRole);
             return existing;
         }
 
         if (identity.email() != null && identity.emailVerified()) {
             User byEmail = userRepository.findByEmail(identity.email()).orElse(null);
             if (byEmail != null) {
+                assertRoleMatches(byEmail, requestedRole);
                 providerIdSetter.accept(byEmail, identity.subject());
                 if (!byEmail.isEmailVerified()) {
                     byEmail.setEmailVerified(true);
@@ -148,10 +160,14 @@ public class AuthService {
             }
         }
 
+        if (requestedRole == null) {
+            throw new BadRequestException("Please choose whether you are signing in as a Customer or a Provider.");
+        }
+
         User created = new User();
         created.setAuthProvider(provider);
         providerIdSetter.accept(created, identity.subject());
-        created.setRole(requestedRole != null ? requestedRole : Role.CUSTOMER);
+        created.setRole(requestedRole);
 
         if (identity.email() != null) {
             if (userRepository.existsByEmail(identity.email())) {
@@ -168,6 +184,23 @@ public class AuthService {
                 : (identity.email() != null ? identity.email().split("@")[0] : "Worksy User"));
 
         return userRepository.save(created);
+    }
+
+    /**
+     * An existing account's role is never changed by an OAuth login. If the caller explicitly
+     * asked for the other role, refuse with a clear message. A null requestedRole (older client)
+     * skips the check so existing behaviour is unchanged.
+     */
+    private void assertRoleMatches(User user, Role requestedRole) {
+        if (requestedRole != null && user.getRole() != requestedRole) {
+            throw new ForbiddenException("This account is registered as a " + roleLabel(user.getRole())
+                    + ", not a " + roleLabel(requestedRole) + ". Please sign in from the "
+                    + roleLabel(user.getRole()) + " login instead.");
+        }
+    }
+
+    private static String roleLabel(Role role) {
+        return role == Role.PROVIDER ? "Provider" : "Customer";
     }
 
     // ------------------------------------------------------------------

@@ -14,6 +14,8 @@ public class GoogleAuthRequest {
     @NotBlank(message = "idToken is required")
     private String idToken;
 
-    // Only used if this Google account has no existing/linked user yet. Defaults to CUSTOMER.
+    // The role chosen on the Customer/Provider login screen. Send it on every Google login.
+    // - New Google account: the account is created with this role (400 if omitted).
+    // - Existing account: its stored role is never changed; a different requested role is rejected (403).
     private Role role;
 }

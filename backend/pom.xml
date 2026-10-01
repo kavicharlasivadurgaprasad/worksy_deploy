@@ -116,16 +116,17 @@
 				<version>9.41.1</version>
 			</dependency>
 
-			<!-- 7. Spring Boot Test -->
-			<dependency>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-starter-test</artifactId>
-				<scope>test</scope>
-			</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
+
+			<!-- 9. Spring Mail (password-reset emails; see service/email/SmtpEmailSender) -->
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-starter-mail</artifactId>
+			</dependency>
 
 			<!-- 8. WebSocket support (live chat) -->
 			<dependency>
