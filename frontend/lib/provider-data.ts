@@ -126,3 +126,14 @@ export const initialWorkingHours: WorkingHoursDay[] = [
 ];
 
 export type JobItem = ProviderJob;
+export interface ProviderOffer {
+  id: string;
+  title: string;
+  discountPercentage: number;
+  validUntil: string;
+  maxBookings: number;
+  usedBookings: number;
+  applicableCategory: string;
+  status: 'Active' | 'Expired' | 'Paused';
+}
+
