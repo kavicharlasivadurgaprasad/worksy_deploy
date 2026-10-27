@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React, { useState } from 'react';
 import {
   Star,
@@ -116,11 +118,7 @@ export default function ReviewsTab({ reviews: serverReviews, businessName }: Rev
             >
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div className="flex items-start gap-3.5">
-                  <img
-                    src={rev.customerAvatar}
-                    alt={rev.customerName}
-                    className="w-12 h-12 rounded-2xl object-cover border border-stone-200 shrink-0"
-                  />
+                  <UserAvatar src={rev.customerAvatar} name={rev.customerName} className="w-12 h-12 rounded-2xl border border-stone-200" />
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-base font-bold text-stone-900">{rev.customerName}</h4>

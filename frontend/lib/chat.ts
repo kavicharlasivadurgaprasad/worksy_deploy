@@ -9,7 +9,7 @@
  * native WebSocket API directly, since the backend speaks plain JSON frames rather than STOMP.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiChatMessage, ApiConversation, ApiError, API_BASE_URL, tokenStore } from '@/lib/api';
+import { api, ApiChatMessage, ApiConversation, ApiError, API_BASE_URL, resolveAvatarUrl, tokenStore } from '@/lib/api';
 
 export type ChatConnectionStatus = 'connecting' | 'open' | 'closed' | 'error';
 
@@ -85,7 +85,7 @@ export function useChatCenter(currentUserId: number | undefined) {
         list.map((c: ApiConversation) => ({
           otherUserId: c.otherUserId,
           otherUserName: c.otherUserName,
-          otherUserAvatarUrl: c.otherUserAvatarUrl,
+          otherUserAvatarUrl: resolveAvatarUrl(c.otherUserAvatarUrl) ?? null,
           otherUserRole: c.otherUserRole,
           otherUserPhone: c.otherUserPhone,
           lastMessage: c.lastMessage,

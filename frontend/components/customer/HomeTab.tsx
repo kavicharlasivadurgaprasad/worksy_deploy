@@ -74,12 +74,14 @@ export default function HomeTab({
     .map((p) => ({
       id: p.id,
       name: p.name,
-      rating: p.rating.toFixed(1),
+      rated: p.reviewsCount > 0,
+      rating: p.reviewsCount > 0 ? p.rating.toFixed(1) : 'No ratings yet',
       reviews: `${p.completedJobs} jobs`,
       distance: p.serviceArea || 'Service area not set',
       category: p.category,
-      price: p.basePrice > 0 ? `₹${p.basePrice}` : 'On request',
-      image: p.avatar,
+      priceSet: p.basePrice > 0,
+      price: p.basePrice > 0 ? `₹${p.basePrice.toLocaleString('en-IN')}` : 'Price not set',
+      image: p.avatar || p.coverImage,
       verified: p.verified,
       provider: p
     }));
@@ -87,7 +89,7 @@ export default function HomeTab({
   const recentlyViewedItems = services.slice(0, 4).map((sv) => ({
     id: sv.id,
     title: sv.title,
-    price: `₹${sv.price.toLocaleString('en-IN')} onwards`,
+    price: sv.hasPrice ? `₹${sv.price.toLocaleString('en-IN')} onwards` : 'Price not set',
     image: sv.image,
     categoryId: sv.categoryId
   }));
@@ -301,7 +303,7 @@ export default function HomeTab({
                       {/* Rating & Distance */}
                       <div className="flex items-center gap-2 text-xs sm:text-sm text-stone-500 mt-2">
                         <span className="flex items-center gap-1 font-semibold text-stone-800">
-                          <Star size={13} className="fill-amber-400 text-amber-400" />
+                          {pro.rated && <Star size={13} className="fill-amber-400 text-amber-400" />}
                           {pro.rating}
                         </span>
                         <span className="text-stone-400">({pro.reviews})</span>
@@ -320,7 +322,7 @@ export default function HomeTab({
 
                       {/* Price */}
                       <div className="mt-3 font-display text-lg sm:text-xl font-semibold text-stone-900 tracking-tight">
-                        {pro.price} <span className="font-body text-xs sm:text-sm font-normal text-stone-500">onwards</span>
+                        {pro.price}{pro.priceSet && <span className="font-body text-xs sm:text-sm font-normal text-stone-500"> onwards</span>}
                       </div>
                     </div>
 

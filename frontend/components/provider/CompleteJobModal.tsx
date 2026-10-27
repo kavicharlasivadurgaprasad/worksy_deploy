@@ -125,7 +125,7 @@ function CompleteJobModalContent({
               Job Successfully Completed!
             </h3>
             <p className="text-sm text-stone-600 max-w-md mx-auto">
-              ₹{netEarnings.toLocaleString('en-IN')} has been credited to your Worksy Available Balance. The digital tax invoice was dispatched to {job.customerName}.
+              The job has been recorded as completed and will appear in your Earnings.
             </p>
           </div>
         ) : (
@@ -259,7 +259,7 @@ function CompleteJobModalContent({
               </div>
 
               <div className="pt-2 border-t border-stone-800 flex items-center justify-between font-display text-base font-bold">
-                <span className="text-stone-200">Your Net Earnings (Credit to Wallet)</span>
+                <span className="text-stone-200">Your Net Earnings</span>
                 <span className="text-amber-400 text-xl font-bold">
                   ₹{netEarnings.toLocaleString('en-IN')}
                 </span>
@@ -308,7 +308,7 @@ function CompleteJobModalContent({
                 {isSubmitting ? (
                   <span className="inline-flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    Generating Invoice &amp; Crediting Balance...
+                    Completing job...
                   </span>
                 ) : (
                   <>

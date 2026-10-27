@@ -49,6 +49,7 @@ import BookingDetailModal from '@/components/customer/BookingDetailModal';
 import NotificationsDrawer from '@/components/customer/NotificationsDrawer';
 import PaymentsModal from '@/components/customer/PaymentsModal';
 import LocationModal from '@/components/customer/LocationModal';
+import type { SearchLocation } from '@/lib/geolocation';
 
 const errMsg = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof Error ? e.message : fallback);
 
@@ -71,6 +72,12 @@ export default function CustomerDashboardPage() {
   // Active Tab state
   const [activeTab, setActiveTab] = useState<CustomerTab>('home');
   const [selectedLocation, setSelectedLocation] = useState('Select location');
+  // Search location for nearby providers (memory only, never persisted). NOT the service address.
+  const [searchLocation, setSearchLocation] = useState<SearchLocation | null>(null);
+  const handleSearchLocationChange = (loc: SearchLocation) => {
+    setSearchLocation(loc);
+    setSelectedLocation(loc.label);
+  };
 
   // Core Data State (all loaded from the backend)
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -123,12 +130,15 @@ export default function CustomerDashboardPage() {
     } finally {
       setIsLoading(false);
     }
+    // Keyed on the user's id, not the user object: Edit Profile replaces the object (new name / picture),
+    // which must NOT trigger a full reload and "Loading..." screen that would unmount the profile tab.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (isReady && user && user.role === 'customer') void loadAll();
-  }, [isReady, user, loadAll]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, user?.id, user?.role, loadAll]);
 
   // Bottom-nav "Messages" badge: polled independently of the Messages tab itself, so it stays
   // accurate even while the user is on a different tab (the tab's own WebSocket only runs while mounted).
@@ -155,6 +165,22 @@ export default function CustomerDashboardPage() {
   // Modals state
   const [serviceModalItem, setServiceModalItem] = useState<ServiceItem | null>(null);
   const [providerModalItem, setProviderModalItem] = useState<Provider | null>(null);
+
+  /**
+   * Opens a provider's public profile. The list we already hold may be stale (the provider can have changed a
+   * price since this page loaded), so the latest saved profile and prices are fetched from the backend and
+   * swapped in. If that request fails the profile still opens with what was loaded earlier.
+   */
+  const openProviderProfile = useCallback((pro: Provider) => {
+    setProviderModalItem(pro);
+    api.getProvider(Number(pro.id))
+      .then((fresh) => {
+        const mapped: Provider = { ...mapProvider(fresh, categories, services), distanceKm: pro.distanceKm };
+        setProviderModalItem((cur) => (cur && cur.id === mapped.id ? mapped : cur));
+        setProviders((list) => list.map((p) => (p.id === mapped.id ? { ...mapped, distanceKm: p.distanceKm } : p)));
+      })
+      .catch(() => { /* keep showing the data we already have */ });
+  }, [categories, services]);
   const [bookingFlowActive, setBookingFlowActive] = useState(false);
   const [bookingFlowService, setBookingFlowService] = useState<ServiceItem | null>(null);
   const [bookingFlowProvider, setBookingFlowProvider] = useState<Provider | null>(null);
@@ -228,7 +254,7 @@ export default function CustomerDashboardPage() {
       problemDescription: input.problemDescription || undefined,
       paymentMethod: input.paymentMethod,
       addonIds: input.addons.map((a) => Number(a.id))
-    });
+    }, input.images);
     return mapBooking(saved, input.service.category);
   };
 
@@ -302,6 +328,16 @@ export default function CustomerDashboardPage() {
     }
   };
 
+  /** Re-reads saved addresses after Edit Profile changed the default one (no full reload). */
+  const refreshAddresses = async () => {
+    if (!user) return;
+    try {
+      setAddresses((await api.getAddresses(user.id)).map(mapAddress));
+    } catch {
+      /* the saved profile is already confirmed; the list refreshes on the next load */
+    }
+  };
+
   /** DELETE /users/{id}/addresses/{addressId} */
   const handleDeleteAddress = async (addrId: string) => {
     if (!user) return;
@@ -360,10 +396,8 @@ export default function CustomerDashboardPage() {
       <CustomerHeader
         selectedLocation={selectedLocation}
         onOpenLocationModal={() => setIsLocationModalOpen(true)}
-        onOpenWalletModal={() => setIsWalletModalOpen(true)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         unreadNotifsCount={unreadNotifsCount}
-        walletBalance={walletBalance}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onSearchSubmit={handleSearchSubmit}
@@ -393,7 +427,7 @@ export default function CustomerDashboardPage() {
               onToggleFavorite={handleToggleFavorite}
               onSelectCategory={handleSelectCategory}
               onSelectService={(srv) => setServiceModalItem(srv)}
-              onSelectProvider={(pro) => setProviderModalItem(pro)}
+              onSelectProvider={openProviderProfile}
               onTrackBooking={(b) => setActiveTrackingBooking(b)}
               onViewBookingDetails={(b) => setActiveInvoiceBooking(b)}
               onBookNow={handleStartBookingFlow}
@@ -413,10 +447,12 @@ export default function CustomerDashboardPage() {
               favorites={favorites}
               onToggleFavorite={handleToggleFavorite}
               onSelectService={(srv) => setServiceModalItem(srv)}
-              onSelectProvider={(pro) => setProviderModalItem(pro)}
+              onSelectProvider={openProviderProfile}
               onBookNow={handleStartBookingFlow}
               initialCategory={exploreCategory}
               initialQuery={exploreQuery}
+              searchLocation={searchLocation}
+              onSearchLocationChange={handleSearchLocationChange}
             />
           )}
 
@@ -430,7 +466,7 @@ export default function CustomerDashboardPage() {
                 setOpenChatRequest({
                   otherUserId: Number(b.providerUserId),
                   otherUserName: b.providerName,
-                  otherUserAvatarUrl: null,
+                  otherUserAvatarUrl: b.providerAvatar || null,
                   otherUserRole: 'PROVIDER',
                   otherUserPhone: b.providerPhone || null,
                   bookingId: b.id,
@@ -467,7 +503,7 @@ export default function CustomerDashboardPage() {
               providers={providers}
               services={services}
               onToggleFavorite={handleToggleFavorite}
-              onSelectProvider={(pro) => setProviderModalItem(pro)}
+              onSelectProvider={openProviderProfile}
               onBookNow={handleStartBookingFlow}
             />
           )}
@@ -484,11 +520,10 @@ export default function CustomerDashboardPage() {
           {activeTab === 'profile' && (
             <ProfileTab
               addresses={addresses}
-              walletBalance={walletBalance}
               onAddAddress={handleAddAddress}
               onDeleteAddress={handleDeleteAddress}
-              onOpenWalletModal={() => setIsWalletModalOpen(true)}
               setActiveTab={setActiveTab}
+              onProfileSaved={refreshAddresses}
             />
           )}
 
@@ -527,7 +562,7 @@ export default function CustomerDashboardPage() {
         providers={providers}
         onSelectProvider={(pro) => {
           setServiceModalItem(null);
-          setProviderModalItem(pro);
+          openProviderProfile(pro);
         }}
       />
 
@@ -544,7 +579,7 @@ export default function CustomerDashboardPage() {
           setOpenChatRequest({
             otherUserId: Number(pro.userId),
             otherUserName: pro.name,
-            otherUserAvatarUrl: null,
+            otherUserAvatarUrl: pro.avatar || null,
             otherUserRole: 'PROVIDER',
             otherUserPhone: pro.phone || null,
           });
@@ -583,7 +618,7 @@ export default function CustomerDashboardPage() {
           setOpenChatRequest({
             otherUserId: Number(b.providerUserId),
             otherUserName: b.providerName,
-            otherUserAvatarUrl: null,
+            otherUserAvatarUrl: b.providerAvatar || null,
             otherUserRole: 'PROVIDER',
             otherUserPhone: b.providerPhone || null,
             bookingId: b.id,
@@ -642,7 +677,11 @@ export default function CustomerDashboardPage() {
         isOpen={isLocationModalOpen}
         onClose={() => setIsLocationModalOpen(false)}
         currentLocation={selectedLocation}
-        onSelectLocation={(loc) => setSelectedLocation(loc)}
+        onSelectLocation={(loc) => {
+          setSelectedLocation(loc);
+          setSearchLocation(null);
+        }}
+        onSelectSearchLocation={handleSearchLocationChange}
       />
 
       {/* WORKSY Bottom Footer matching screenshot */}

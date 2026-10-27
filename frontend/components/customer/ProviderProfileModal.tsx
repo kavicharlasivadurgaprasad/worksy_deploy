@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React from 'react';
 import {
   X,
@@ -16,6 +18,7 @@ import {
   Share2
 } from 'lucide-react';
 import { Provider } from '@/lib/marketplace-data';
+import { formatRupees } from '@/lib/price';
 
 interface ProviderProfileModalProps {
   provider: Provider | null;
@@ -71,11 +74,7 @@ export default function ProviderProfileModal({
           {/* Provider Avatar & Main Info */}
           <div className="absolute -bottom-8 left-6 flex items-end gap-4">
             <div className="relative">
-              <img
-                src={provider.avatar}
-                alt={provider.name}
-                className="w-20 h-20 rounded-3xl object-cover border-4 border-white shadow-lg bg-white"
-              />
+              <UserAvatar src={provider.avatar} name={provider.name} className="w-20 h-20 rounded-3xl border-4 border-white shadow-lg bg-white" />
               {provider.verified && (
                 <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white p-1 rounded-full border-2 border-white" title="Verified Pro">
                   <ShieldCheck size={14} />
@@ -107,15 +106,24 @@ export default function ProviderProfileModal({
           {/* Key Metrics Grid */}
           <div className="grid grid-cols-4 gap-2.5 text-center">
             <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200/80">
-              <div className="flex items-center justify-center gap-1 text-sm sm:text-base font-display font-medium text-stone-900">
-                <Star size={14} className="fill-amber-400 text-amber-400" />
-                <span>{provider.rating}</span>
-              </div>
-              <div className="text-[10px] text-stone-500 mt-0.5">{provider.reviewsCount} reviews</div>
+              {provider.reviewsCount > 0 ? (
+                <>
+                  <div className="flex items-center justify-center gap-1 text-sm sm:text-base font-display font-medium text-stone-900">
+                    <Star size={14} className="fill-amber-400 text-amber-400" />
+                    <span>{provider.rating.toFixed(1)}</span>
+                  </div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">{provider.reviewsCount} {provider.reviewsCount === 1 ? 'rating' : 'ratings'}</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm sm:text-base font-display font-medium text-stone-400">—</div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">No ratings yet</div>
+                </>
+              )}
             </div>
 
             <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200/80">
-              <div className="text-sm sm:text-base font-display font-medium text-stone-900">{provider.completedJobs}+</div>
+              <div className="text-sm sm:text-base font-display font-medium text-stone-900">{provider.completedJobs}</div>
               <div className="text-[10px] text-stone-500 mt-0.5">Jobs Done</div>
             </div>
 
@@ -125,8 +133,8 @@ export default function ProviderProfileModal({
             </div>
 
             <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200/80">
-              <div className="text-sm sm:text-base font-display font-semibold text-emerald-800">₹{provider.basePrice}</div>
-              <div className="text-[10px] text-stone-500 mt-0.5">Min Charge</div>
+              <div className="text-sm sm:text-base font-display font-semibold text-emerald-800">{provider.basePrice > 0 ? formatRupees(provider.basePrice) : 'Price not set'}</div>
+              <div className="text-[10px] text-stone-500 mt-0.5">Starting Price</div>
             </div>
           </div>
 
@@ -146,6 +154,9 @@ export default function ProviderProfileModal({
           <div className="space-y-3">
             <h3 className="text-sm font-bold text-stone-900">Services Offered</h3>
             <div className="divide-y divide-stone-100 border border-stone-200 rounded-2xl overflow-hidden">
+              {provider.servicesOffered.length === 0 && (
+                <div className="p-3.5 text-xs text-stone-500">Price not set. This provider has not set a price for any service yet, so they can't be booked.</div>
+              )}
               {provider.servicesOffered.map((srv, idx) => (
                 <div
                   key={idx}
@@ -156,7 +167,7 @@ export default function ProviderProfileModal({
                     <span>{srv.title}</span>
                   </div>
                   <div className="text-xs sm:text-sm font-bold text-stone-900">
-                    ₹{srv.price}
+                    {srv.price > 0 ? formatRupees(srv.price) : 'Price not set'}
                   </div>
                 </div>
               ))}
@@ -185,7 +196,9 @@ export default function ProviderProfileModal({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-stone-900">Verified Customer Reviews</h3>
-              <span className="text-xs text-stone-500">⭐ {provider.rating} of 5</span>
+              <span className="text-xs text-stone-500">
+                {provider.reviewsCount > 0 ? `⭐ ${provider.rating.toFixed(1)} of 5` : 'No ratings yet'}
+              </span>
             </div>
 
             <div className="space-y-3">
@@ -193,11 +206,7 @@ export default function ProviderProfileModal({
                 <div key={rev.id} className="p-4 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <img
-                        src={rev.avatar}
-                        alt={rev.customerName}
-                        className="w-7 h-7 rounded-full object-cover"
-                      />
+                      <UserAvatar src={rev.avatar} name={rev.customerName} className="w-7 h-7 rounded-full" />
                       <div>
                         <div className="text-xs font-bold text-stone-900">{rev.customerName}</div>
                         <div className="text-[10px] text-stone-400">{rev.date} • {rev.service}</div>

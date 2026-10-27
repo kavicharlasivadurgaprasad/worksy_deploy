@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import UserAvatar from '@/components/shared/UserAvatar';
+
+import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck,
   Star,
@@ -15,10 +17,15 @@ import {
   Plus,
   Wrench,
   Check,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
 import { MARKETPLACE_SKILLS, DEFAULT_PROVIDER_SKILLS } from '@/lib/provider-data';
 import { useAuth } from '@/lib/auth-context';
+import ProviderLocationCard from '@/components/provider/ProviderLocationCard';
+import EditProfileModal from '@/components/shared/EditProfileModal';
+import { api, ApiProfile, ApiProviderServicePrice } from '@/lib/api';
+import { formatRupees } from '@/lib/price';
 
 interface ProfileTabProps {
   providerSkills?: string[];
@@ -30,10 +37,45 @@ export default function ProfileTab({
   onUpdateSkills
 }: ProfileTabProps) {
   const { user } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
-  // Edits are local only: the backend has no update-profile endpoint yet (see AUDIT_REPORT.md)
-  const [businessName, setBusinessName] = useState(user?.businessName || '');
-  const [bio, setBio] = useState('');
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [savedMessage, setSavedMessage] = useState('');
+  // The provider's real saved profile (GET /profile/me). Edit Profile saves through PUT /profile/me.
+  const [profile, setProfile] = useState<ApiProfile | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    api.getMyProfile().then((p) => { if (!cancelled) setProfile(p); }).catch(() => { /* header falls back to the signed-in user's details */ });
+    return () => { cancelled = true; };
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The provider's real services and saved prices (nothing hard-coded). null = still loading.
+  const [services, setServices] = useState<ApiProviderServicePrice[] | null>(null);
+  const [servicesError, setServicesError] = useState('');
+  const loadServices = React.useCallback(async () => {
+    if (!user) return;
+    setServicesError('');
+    try {
+      setServices(await api.getMyServicePrices(user.id));
+    } catch (e) {
+      setServices([]);
+      setServicesError(e instanceof Error ? e.message : 'Could not load your services and prices.');
+    }
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { void loadServices(); }, [loadServices]);
+
+  useEffect(() => {
+    if (!savedMessage) return;
+    const t = setTimeout(() => setSavedMessage(''), 6000);
+    return () => clearTimeout(t);
+  }, [savedMessage]);
+
+  const details = profile?.provider ?? null;
+  const businessName = details?.businessName || user?.businessName || '';
+  const bio = details?.description || '';
+  const headline = details?.tagline || details?.category || user?.category || '';
+  const serviceAreaText = details?.serviceArea || '';
 
   const activeSkills = providerSkills;
 
@@ -49,14 +91,6 @@ export default function ProfileTab({
       onUpdateSkills([...activeSkills, skill]);
     }
   };
-
-  const services = [
-    { title: 'AC Comprehensive Deep Cleaning', category: 'AC Care', price: 499, duration: '45 mins' },
-    { title: 'Switchboard & Fan Installation', category: 'Electrical', price: 199, duration: '30 mins' },
-    { title: 'AC Gas Charging & Leak Diagnosis', category: 'AC Care', price: 1400, duration: '60 mins' },
-    { title: 'Main Distribution MCB Tripping Fix', category: 'Electrical', price: 399, duration: '40 mins' },
-    { title: 'Inverter Emergency Wiring Fix', category: 'Electrical', price: 450, duration: '45 mins' }
-  ];
 
   const serviceAreas = ['Indiranagar', 'Koramangala', 'Domlur', 'HAL 2nd Stage', 'Ulsoor', 'HSR Layout'];
 
@@ -74,6 +108,18 @@ export default function ProfileTab({
 
   return (
     <div className="space-y-8 pb-24 w-full max-w-[1840px] 2xl:max-w-[1920px] mx-auto">
+      {savedMessage && (
+        <div role="status" className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-sm font-semibold text-emerald-800">
+          <span className="flex items-center gap-2"><CheckCircle2 size={18} /> {savedMessage}</span>
+          <button type="button" onClick={() => setSavedMessage('')} aria-label="Dismiss message" className="p-1 rounded-lg hover:bg-emerald-100">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Service location + availability for nearby search */}
+      <ProviderLocationCard />
+
       {/* Profile Header Banner */}
       <div className="bg-white border border-stone-200/90 rounded-3xl overflow-hidden shadow-xs">
         {/* Cover Image */}
@@ -94,11 +140,7 @@ export default function ProfileTab({
             <div className="flex flex-col sm:flex-row items-start sm:items-end gap-5 sm:gap-6">
               {/* Avatar neatly overlapping banner border */}
               <div className="relative -mt-16 sm:-mt-20 shrink-0">
-                <img
-                  src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=250"
-                  alt={user?.name || "Profile"}
-                  className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl object-cover border-4 border-white shadow-xl bg-white ring-1 ring-stone-200/80"
-                />
+                <UserAvatar src={user?.avatar} name={user?.name || "Profile"} className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl border-4 border-white shadow-xl bg-white ring-1 ring-stone-200/80" />
                 <span className="absolute bottom-1.5 right-1.5 bg-emerald-600 text-white rounded-full p-1.5 border-2 border-white shadow">
                   <ShieldCheck size={16} />
                 </span>
@@ -117,32 +159,48 @@ export default function ProfileTab({
                 </div>
 
                 <p className="text-sm sm:text-base font-semibold text-stone-700 mt-1">
-                  {businessName} • <span className="text-stone-500 font-normal">Licensed Electrical &amp; HVAC Pro</span>
+                  {businessName}{headline && <> • <span className="text-stone-500 font-normal">{headline}</span></>}
                 </p>
 
                 <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-stone-600 mt-2.5 font-medium">
                   <span className="flex items-center gap-1 font-bold text-stone-900">
-                    <Star size={15} className="fill-amber-400 text-amber-400" />
-                    <span>4.86</span>
-                    <span className="text-stone-400 font-normal">(1,284 reviews)</span>
+                    {details && details.rating != null && details.reviewCount > 0 ? (
+                      <>
+                        <Star size={15} className="fill-amber-400 text-amber-400" />
+                        <span>{details.rating.toFixed(1)} ({details.reviewCount})</span>
+                      </>
+                    ) : (
+                      <span>{details ? 'No ratings yet' : '–'}</span>
+                    )}
                   </span>
                   <span>•</span>
-                  <span>2,400+ jobs completed</span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1 text-rose-500">
-                    <MapPin size={13} />
-                    <span>Indiranagar, Bengaluru</span>
-                  </span>
+                  <span>{details ? `${details.completedJobs} jobs completed` : ''}</span>
+                  {details && details.experienceYears > 0 && (
+                    <>
+                      <span>•</span>
+                      <span>{details.experienceYears} {details.experienceYears === 1 ? 'yr' : 'yrs'} experience</span>
+                    </>
+                  )}
+                  {serviceAreaText && (
+                    <>
+                      <span>•</span>
+                      <span className="flex items-center gap-1 text-rose-500">
+                        <MapPin size={13} />
+                        <span>{serviceAreaText}</span>
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
 
             <button
-              onClick={() => setIsEditing(!isEditing)}
+              type="button"
+              onClick={() => setIsEditOpen(true)}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-stone-300 hover:bg-stone-50 text-xs sm:text-sm font-bold text-stone-800 transition-colors self-start md:self-end mt-2 md:mt-0 cursor-pointer"
             >
               <Edit3 size={15} />
-              <span>{isEditing ? 'Save Changes' : 'Edit Profile'}</span>
+              <span>Edit Profile</span>
             </button>
           </div>
         </div>
@@ -222,16 +280,13 @@ export default function ProfileTab({
             <h3 className="font-display text-xl font-medium text-stone-900">
               About <span className="italic font-normal">the Business</span>
             </h3>
-            {isEditing ? (
-              <textarea
-                rows={4}
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                className="w-full p-3 rounded-xl border border-stone-300 text-sm text-stone-800 focus:outline-none focus:border-black"
-              />
-            ) : (
-              <p className="text-sm text-stone-600 leading-relaxed font-medium">
+            {bio ? (
+              <p className="text-sm text-stone-600 leading-relaxed font-medium whitespace-pre-line">
                 {bio}
+              </p>
+            ) : (
+              <p className="text-sm text-stone-400 leading-relaxed">
+                Tell customers about your business. Use Edit Profile to add a description.
               </p>
             )}
           </div>
@@ -241,27 +296,34 @@ export default function ProfileTab({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-display text-xl font-medium text-stone-900">
-                  Services <span className="italic font-normal">&amp; Standard Pricing</span>
+                  Services <span className="italic font-normal">&amp; Pricing</span>
                 </h3>
-                <p className="text-xs text-stone-500 mt-0.5">Rates displayed to customers searching in your radius</p>
+                <p className="text-xs text-stone-500 mt-0.5">The prices customers see on your profile. Change them from Edit Profile.</p>
               </div>
             </div>
 
+            {services === null && <p className="text-xs text-stone-500">Loading your services…</p>}
+            {servicesError && <p role="alert" className="text-xs font-semibold text-rose-700">{servicesError}</p>}
+            {services !== null && !servicesError && services.length === 0 && (
+              <p className="text-xs text-stone-500">There are no catalogue services in your category yet.</p>
+            )}
             <div className="divide-y divide-stone-100">
-              {services.map((srv, idx) => (
-                <div key={idx} className="py-3 flex items-center justify-between text-xs sm:text-sm">
-                  <div>
+              {(services ?? []).map((srv) => (
+                <div key={srv.serviceId} className="py-3 flex items-center justify-between gap-3 text-xs sm:text-sm">
+                  <div className="min-w-0">
                     <div className="font-bold text-stone-900">{srv.title}</div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.2 rounded border border-amber-200">
-                        {srv.category}
+                        {srv.categoryName}
                       </span>
                       <span className="text-[11px] text-stone-400">Estimated: {srv.duration}</span>
                     </div>
                   </div>
-                  <div className="font-display font-semibold text-emerald-800 text-base">
-                    ₹{srv.price} onwards
-                  </div>
+                  {srv.priceSet && srv.price != null ? (
+                    <div className="font-display font-semibold text-emerald-800 text-base shrink-0">{formatRupees(srv.price)}</div>
+                  ) : (
+                    <div className="text-xs font-semibold text-amber-800 shrink-0">Price not set</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -324,6 +386,18 @@ export default function ProfileTab({
           </div>
         </div>
       </div>
+
+      {isEditOpen && (
+        <EditProfileModal
+          onClose={() => setIsEditOpen(false)}
+          onSaved={(saved) => {
+            setProfile(saved);
+            setIsEditOpen(false);
+            setSavedMessage('Your profile and prices were updated successfully.');
+            void loadServices();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -19,7 +19,11 @@ export interface ServiceItem {
   title: string;
   category: string;
   categoryId: string;
+  /** Lowest price any provider charges (0 when no provider has set one: check hasPrice). The payable price is the chosen provider's own, see Provider.servicesOffered. */
   price: number;
+  hasPrice?: boolean;
+  providerCount?: number;
+  /** Services have no ratings in the schema: always 0 / 0, so the UI must not display them. */
   rating: number;
   reviewsCount: number;
   duration: string;
@@ -52,9 +56,12 @@ export interface Provider {
   tagline: string;
   category: string;
   categoryId: string;
+  /** Average of real customer ratings. Only meaningful when reviewsCount > 0; otherwise show "No ratings yet". */
   rating: number;
+  /** Number of real reviews behind `rating`. */
   reviewsCount: number;
   distanceKm: number;
+  /** Lowest price this provider has set (0 = no price set yet). */
   basePrice: number;
   avatar: string;
   coverImage: string;
@@ -69,6 +76,14 @@ export interface Provider {
   reviews: ProviderReview[];
   phone: string;
   badge?: string;
+}
+
+export interface BookingImage {
+  id: string;
+  fileName: string;
+  sizeBytes: number;
+  /** API path under the base URL, e.g. /bookings/5/images/9 */
+  url: string;
 }
 
 export interface Booking {
@@ -94,6 +109,8 @@ export interface Booking {
   };
   problemDescription: string;
   addons: { id: string; name: string; price: number }[];
+  /** Problem photos the customer attached (private; load via api.fetchImageBlob). */
+  images?: BookingImage[];
   basePrice: number;
   addonsTotal: number;
   tax: number;
@@ -142,6 +159,8 @@ export interface Address {
   area: string;
   city: string;
   pincode: string;
+  /** Optional: addresses saved before Edit Profile have no state. */
+  state?: string;
   isDefault: boolean;
 }
 
@@ -177,352 +196,7 @@ export const serviceCategories: ServiceCategory[] = [
   { id: 'painting', name: 'Painting & Carpentry', icon: '🪵', description: 'Furniture repair, wall painting & drill work', servicesCount: 15 },
 ];
 
-export const initialServices: ServiceItem[] = [
-  {
-    id: 'srv-ac-1',
-    title: 'AC Comprehensive Deep Cleaning',
-    category: 'AC Repair',
-    categoryId: 'ac-repair',
-    price: 499,
-    rating: 4.85,
-    reviewsCount: 1245,
-    duration: '45-60 mins',
-    image: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=600',
-    badge: 'Bestseller',
-    description: 'High-pressure foam power-jet cleaning of indoor coils and outdoor unit. Restores cooling efficiency by up to 30% and reduces power consumption.',
-    included: [
-      'Indoor unit coil deep foam cleaning',
-      'High-pressure water jet cleaning of filters & blower',
-      'Outdoor unit inspection and water flush',
-      'Drain tray & pipe unclogging',
-      'Gas pressure level check & temperature test'
-    ],
-    excluded: [
-      'Gas charging (can be added as addon)',
-      'Spare parts replacement (charged at standard rate)'
-    ],
-    addons: [
-      { id: 'add-1', name: 'Anti-Rust Coating for Coils', price: 299, description: 'Protective hydrophobic spray to prevent copper corrosion' },
-      { id: 'add-2', name: 'Indoor Air Purifier Filter', price: 349, description: 'PM2.5 micro-allergen filtration mesh' },
-      { id: 'add-3', name: 'R32/R410A Refrigerant Top-up', price: 1200, description: 'Full gas recharge with leak diagnosis' }
-    ],
-    faqs: [
-      { question: 'How often should I get my AC serviced?', answer: 'We recommend servicing twice a year: once before summer starts and once mid-season for peak efficiency.' },
-      { question: 'Will water spill on my walls or floor during jet cleaning?', answer: 'No, our technicians use a specialized waterproof catch jacket that funnels all runoff into a bucket.' },
-      { question: 'Is there a warranty on this service?', answer: 'Yes, 30 days hassle-free Worksy service guarantee covers any leakage or cooling issues.' }
-    ],
-    cancellationPolicy: 'Free cancellation up to 2 hours before the scheduled slot. ₹100 visit fee applies thereafter.'
-  },
-  {
-    id: 'srv-elec-1',
-    title: 'Switchboard & Fan Installation / Repair',
-    category: 'Electrician',
-    categoryId: 'electrician',
-    price: 199,
-    rating: 4.9,
-    reviewsCount: 890,
-    duration: '30-45 mins',
-    image: 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?auto=format&fit=crop&q=80&w=600',
-    badge: 'Verified Pro',
-    description: 'Diagnosis and repair of faulty sockets, MCB tripping, ceiling fan replacement, regulator fixing, or new modular switchboard installation.',
-    included: [
-      'Digital multimeter voltage & ground diagnosis',
-      'Switch/socket replacement or connection tightening',
-      'Ceiling fan hook fitting & speed regulator calibration',
-      'Safety check on main electrical distribution board'
-    ],
-    addons: [
-      { id: 'add-elec-1', name: 'Anchor Modular Switch (Pack of 2)', price: 150, description: 'Genuine 16A modular switch with indicator' },
-      { id: 'add-elec-2', name: 'Heavy-Duty MCB 32A', price: 350, description: 'Overload and short circuit protection breaker' }
-    ],
-    faqs: [
-      { question: 'Are materials included in the price?', answer: 'Inspection and labor are included. Any consumable replacement switches or wires are billed at standard MRP.' }
-    ],
-    cancellationPolicy: 'Free cancellation anytime before pro dispatches.'
-  },
-  {
-    id: 'srv-clean-1',
-    title: 'Full Home Deep Cleaning & Sanitization',
-    category: 'Cleaning',
-    categoryId: 'cleaning',
-    price: 1499,
-    rating: 4.88,
-    reviewsCount: 2150,
-    duration: '3-4 hours',
-    image: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&q=80&w=600',
-    badge: 'Popular',
-    description: 'Thorough top-to-bottom cleaning of bedrooms, living room, balconies, floor scrubbing with single-disc machine, and window degreasing.',
-    included: [
-      'Machine scrubbing of tiles & hardwood floors',
-      'Cobweb removal, ceiling fans & light fixtures wiping',
-      'Window panes, mesh tracks & grills steam cleaning',
-      'Balcony washing & sanitization of high-touch points'
-    ],
-    addons: [
-      { id: 'add-clean-1', name: 'Kitchen Chimney Degreasing', price: 499, description: 'Baffle filter soaking & interior grease removal' },
-      { id: 'add-clean-2', name: '3-Seater Sofa Shampooing', price: 699, description: 'Wet vacuum extraction of dust mites and stains' }
-    ],
-    faqs: [
-      { question: 'Do I need to supply cleaning liquids or machines?', answer: 'No! Our 2-person crew brings professional Taski chemicals, vacuums, and scrubbers.' }
-    ],
-    cancellationPolicy: 'Free cancellation up to 4 hours before the appointment.'
-  },
-  {
-    id: 'srv-plumb-1',
-    title: 'Tap, Pipe Leakage & Geyser Installation',
-    category: 'Plumbing',
-    categoryId: 'plumbing',
-    price: 249,
-    rating: 4.79,
-    reviewsCount: 760,
-    duration: '30-60 mins',
-    image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=600',
-    badge: 'Quick Fix',
-    description: 'Fix dripping taps, internal wall pipe seepages, drain blockage removal, or install bathroom shower sets and instant water heaters.',
-    included: [
-      'Water pressure and joint seal inspection',
-      'Teflon tape seal replacement and washer fitting',
-      'Flush tank syphon adjustment and block clearance',
-      'Leak test under full water mains pressure'
-    ],
-    addons: [
-      { id: 'add-plumb-1', name: 'High-Pressure Braided Hose Pipe', price: 180, description: 'Stainless steel 24-inch inlet pipe' },
-      { id: 'add-plumb-2', name: 'Brass Angle Cock Valve', price: 320, description: 'Heavy chrome plated quarter-turn shutoff valve' }
-    ],
-    faqs: [
-      { question: 'Can the plumber fix concealed wall leakages?', answer: 'Yes, our certified plumbers have acoustic pipe detectors to locate concealed leaks with minimal tile damage.' }
-    ],
-    cancellationPolicy: 'Free cancellation up to 1 hour before scheduled time.'
-  },
-  {
-    id: 'srv-app-1',
-    title: 'Washing Machine Repair & Service',
-    category: 'Appliance Repair',
-    categoryId: 'appliances',
-    price: 399,
-    rating: 4.82,
-    reviewsCount: 940,
-    duration: '45 mins',
-    image: 'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?auto=format&fit=crop&q=80&w=600',
-    badge: 'Certified',
-    description: 'Complete inspection of front-load and top-load machines. Fix error codes, spin drum vibrations, water inlet failure, and motor issues.',
-    included: [
-      'Complete mechanical and electronic board diagnosis',
-      'Drum bearing, belt tension, and suspension damper inspection',
-      'Inlet solenoid valve and drain pump filter clean',
-      'Test cycle run with vibration calibration'
-    ],
-    addons: [
-      { id: 'add-app-1', name: 'Descaling & Tub Clean Treatment', price: 299, description: 'Removes limescale buildup and eliminates odors' }
-    ],
-    faqs: [
-      { question: 'Do you cover all brands?', answer: 'Yes, our technicians are certified for LG, Samsung, Bosch, Whirlpool, IFB, and Godrej.' }
-    ],
-    cancellationPolicy: 'Free cancellation up to 2 hours prior.'
-  },
-  {
-    id: 'srv-beauty-1',
-    title: 'Salon at Home: Glow Facial & Waxing',
-    category: 'Beauty & Salon',
-    categoryId: 'beauty',
-    price: 799,
-    rating: 4.93,
-    reviewsCount: 3400,
-    duration: '60-90 mins',
-    image: 'https://images.unsplash.com/photo-1560750588-73207b1ef5b8?auto=format&fit=crop&q=80&w=600',
-    badge: 'Top Rated',
-    description: 'Pampering salon experience in the comfort of your home with single-use sterile kits, organic facial creams, and painless roll-on waxing.',
-    included: [
-      'O3+ or Cheryls radiant brightening facial',
-      'Gentle exfoliating steam and blackhead vacuum',
-      'Full arms and half legs Rica peel waxing',
-      'Relaxing 15-minute face, neck & shoulder acupressure massage'
-    ],
-    addons: [
-      { id: 'add-b-1', name: 'Classic Pedicure with Foot Massage', price: 499, description: 'Cuticle trimming, heel filing, and foot soak' }
-    ],
-    faqs: [
-      { question: 'Is hygiene guaranteed?', answer: '100%. Our beauticians wear masks, sanitize tools, and use disposable bedsheets and towels.' }
-    ],
-    cancellationPolicy: 'Free cancellation up to 3 hours before appointment.'
-  }
-];
-
-export const initialProviders: Provider[] = [
-  {
-    id: 'pro-ravi',
-    name: 'Ravi Electricals & AC Care',
-    tagline: 'Licensed Master Electrician & HVAC Specialist',
-    category: 'Electrical & AC Services',
-    categoryId: 'electrician',
-    rating: 4.86,
-    reviewsCount: 348,
-    distanceKm: 2.3,
-    basePrice: 300,
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=250',
-    coverImage: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=800',
-    verified: true,
-    completedJobs: 412,
-    experienceYears: 8,
-    responseTime: 'Under 10 mins',
-    serviceArea: 'Indiranagar, Domlur, Koramangala, HAL',
-    availability: 'Available Today',
-    badge: 'Super Pro',
-    phone: '+91 98450 12345',
-    servicesOffered: [
-      { serviceId: 'srv-ac-1', title: 'AC Comprehensive Deep Cleaning', price: 499 },
-      { serviceId: 'srv-elec-1', title: 'Switchboard & Fan Installation', price: 199 },
-      { serviceId: 'srv-ac-gas', title: 'AC Gas Charging & Leak Fix', price: 1400 }
-    ],
-    portfolio: [
-      'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=400',
-      'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?auto=format&fit=crop&q=80&w=400',
-      'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&q=80&w=400'
-    ],
-    reviews: [
-      {
-        id: 'rev-1',
-        customerName: 'Priya Sharma',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150',
-        rating: 5,
-        date: '3 days ago',
-        comment: 'Ravi was extremely punctual and carried all professional tools. My Daikin AC is cooling like brand new now. Very polite and cleaned up afterward!',
-        service: 'AC Comprehensive Deep Cleaning',
-        verified: true
-      },
-      {
-        id: 'rev-2',
-        customerName: 'Karthik Raman',
-        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150',
-        rating: 5,
-        date: 'Last week',
-        comment: 'Fixed a persistent short circuit tripping my entire 3BHK flat within 30 minutes. Transparent pricing with genuine parts.',
-        service: 'Switchboard & Fan Installation',
-        verified: true
-      }
-    ]
-  },
-  {
-    id: 'pro-cleanpro',
-    name: 'CleanPro Express Services',
-    tagline: 'Eco-friendly Residential & Kitchen Deep Cleaning',
-    category: 'Home Cleaning',
-    categoryId: 'cleaning',
-    rating: 4.91,
-    reviewsCount: 520,
-    distanceKm: 1.8,
-    basePrice: 599,
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=250',
-    coverImage: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&q=80&w=800',
-    verified: true,
-    completedJobs: 630,
-    experienceYears: 6,
-    responseTime: 'Under 15 mins',
-    serviceArea: 'Indiranagar, Ulsoor, MG Road, HSR Layout',
-    availability: 'Available Today',
-    badge: 'Top Rated',
-    phone: '+91 98860 98765',
-    servicesOffered: [
-      { serviceId: 'srv-clean-1', title: 'Full Home Deep Cleaning', price: 1499 },
-      { serviceId: 'srv-sofa', title: 'Sofa & Carpet Wet Extraction', price: 699 }
-    ],
-    portfolio: [
-      'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&q=80&w=400',
-      'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=400'
-    ],
-    reviews: [
-      {
-        id: 'rev-3',
-        customerName: 'Ananya Deshmukh',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150',
-        rating: 5,
-        date: '2 days ago',
-        comment: 'The team did magic to our kitchen tiles and chimney. Zero grease left behind. Highly recommended!',
-        service: 'Full Home Deep Cleaning',
-        verified: true
-      }
-    ]
-  },
-  {
-    id: 'pro-voltedge',
-    name: 'VoltEdge Smart Repairs',
-    tagline: 'Appliance & Smart Home Electronics Expert',
-    category: 'Appliance & Gadget Repair',
-    categoryId: 'appliances',
-    rating: 4.82,
-    reviewsCount: 290,
-    distanceKm: 3.4,
-    basePrice: 350,
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=250',
-    coverImage: 'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?auto=format&fit=crop&q=80&w=800',
-    verified: true,
-    completedJobs: 380,
-    experienceYears: 7,
-    responseTime: 'Within 20 mins',
-    serviceArea: 'Koramangala, BTM, HSR Layout, Bellandur',
-    availability: 'Slots at 4 PM',
-    badge: 'Verified Pro',
-    phone: '+91 97410 44556',
-    servicesOffered: [
-      { serviceId: 'srv-app-1', title: 'Washing Machine Repair', price: 399 },
-      { serviceId: 'srv-fridge', title: 'Refrigerator Gas & Thermostat', price: 499 }
-    ],
-    portfolio: [
-      'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?auto=format&fit=crop&q=80&w=400'
-    ],
-    reviews: [
-      {
-        id: 'rev-4',
-        customerName: 'Vikram Mehta',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150',
-        rating: 5,
-        date: '1 week ago',
-        comment: 'Replaced my IFB washing machine drain pump on the spot. Great technical knowledge.',
-        service: 'Washing Machine Repair',
-        verified: true
-      }
-    ]
-  },
-  {
-    id: 'pro-aqua',
-    name: 'AquaFlow Plumbing Care',
-    tagline: 'Sanitaryware, Pipe Relining & Motor Installations',
-    category: 'Plumbing Solutions',
-    categoryId: 'plumbing',
-    rating: 4.78,
-    reviewsCount: 215,
-    distanceKm: 2.9,
-    basePrice: 250,
-    avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=250',
-    coverImage: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=800',
-    verified: true,
-    completedJobs: 285,
-    experienceYears: 5,
-    responseTime: 'Under 15 mins',
-    serviceArea: 'Indiranagar, Murphy Town, Cox Town',
-    availability: 'Available Today',
-    badge: 'Fast Responder',
-    phone: '+91 99010 77889',
-    servicesOffered: [
-      { serviceId: 'srv-plumb-1', title: 'Tap, Pipe Leakage & Geyser', price: 249 }
-    ],
-    portfolio: [
-      'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=400'
-    ],
-    reviews: [
-      {
-        id: 'rev-5',
-        customerName: 'Suresh N.',
-        avatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&q=80&w=150',
-        rating: 4.8,
-        date: '4 days ago',
-        comment: 'Quick and clean geyser installation. Ensured no wall tile cracks.',
-        service: 'Tap, Pipe Leakage & Geyser',
-        verified: true
-      }
-    ]
-  }
-];
+// Mock services/providers (with made-up ratings and prices) were removed: the UI loads real data from the API.
 
 export const initialBookings: Booking[] = [
   {

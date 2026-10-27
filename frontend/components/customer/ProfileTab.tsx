@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -21,20 +23,24 @@ import {
   Plus,
   Trash2,
   Check,
-  RefreshCw,
-  Wallet
+  Edit3,
+  CheckCircle2,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Address } from '@/lib/marketplace-data';
 import { CustomerTab } from './CustomerSidebar';
+import EditProfileModal from '@/components/shared/EditProfileModal';
 
 interface ProfileTabProps {
   addresses: Address[];
-  walletBalance: number;
+  walletBalance?: number;
   onAddAddress: (newAddr: Omit<Address, 'id'>) => void;
   onDeleteAddress: (addrId: string) => void;
-  onOpenWalletModal: () => void;
+  onOpenWalletModal?: () => void;
   setActiveTab: (tab: CustomerTab) => void;
+  /** Called after Edit Profile saved, so the page can re-read data the edit may have changed (e.g. the default address). */
+  onProfileSaved?: () => void | Promise<void>;
 }
 
 export default function ProfileTab({
@@ -43,10 +49,26 @@ export default function ProfileTab({
   onAddAddress,
   onDeleteAddress,
   onOpenWalletModal,
-  setActiveTab
+  setActiveTab,
+  onProfileSaved
 }: ProfileTabProps) {
   const router = useRouter();
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout } = useAuth();
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [savedMessage, setSavedMessage] = useState('');
+
+  // The profile header shows the customer's real default address (not a placeholder).
+  const primaryAddress = addresses.find((a) => a.isDefault) || addresses[0];
+  const primaryLocation = primaryAddress
+    ? [primaryAddress.area, primaryAddress.city, primaryAddress.state].filter(Boolean).join(', ')
+    : '';
+
+  // Auto-hide the success message.
+  React.useEffect(() => {
+    if (!savedMessage) return;
+    const t = setTimeout(() => setSavedMessage(''), 6000);
+    return () => clearTimeout(t);
+  }, [savedMessage]);
   const [isAddAddressOpen, setIsAddAddressOpen] = useState(false);
   const [newLabel, setNewLabel] = useState<'Home' | 'Office' | 'Other'>('Home');
   const [newStreet, setNewStreet] = useState('');
@@ -73,15 +95,20 @@ export default function ProfileTab({
 
   return (
     <div className="space-y-10 pb-28 lg:pb-16 max-w-[1760px] 2xl:max-w-[1840px] mx-auto">
+      {savedMessage && (
+        <div role="status" className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-sm font-semibold text-emerald-800">
+          <span className="flex items-center gap-2"><CheckCircle2 size={18} /> {savedMessage}</span>
+          <button type="button" onClick={() => setSavedMessage('')} aria-label="Dismiss message" className="p-1 rounded-lg hover:bg-emerald-100">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Profile Header */}
       <div className="bg-white border border-stone-200/90 rounded-3xl p-8 sm:p-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8 shadow-sm">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
           <div className="relative">
-            <img
-              src={user?.avatar || '/images/user-charan.jpg'}
-              alt={user?.name || 'Profile'}
-              className="w-24 h-24 rounded-3xl object-cover border-2 border-stone-200 shadow-md"
-            />
+            <UserAvatar src={user?.avatar} name={user?.name || 'Profile'} className="w-24 h-24 rounded-3xl border-2 border-stone-200 shadow-md" />
             <span className="absolute -bottom-1.5 -right-1.5 bg-emerald-500 text-white p-1.5 rounded-full border-2 border-white shadow-sm" title="Active">
               <Check size={14} />
             </span>
@@ -99,26 +126,35 @@ export default function ProfileTab({
             <div className="text-sm sm:text-base text-stone-500 mt-1.5 font-medium">
               {user?.email}{user?.phone ? ` • ${user.phone}` : ''}
             </div>
-            <div className="text-sm text-stone-600 mt-1.5 flex items-center gap-1.5 font-medium">
-              <MapPin size={15} className="text-rose-500" />
-              <span>Indiranagar, Bangalore, Karnataka</span>
-            </div>
+            {primaryLocation && (
+              <div className="text-sm text-stone-600 mt-1.5 flex items-center gap-1.5 font-medium">
+                <MapPin size={15} className="text-rose-500" />
+                <span>{primaryLocation}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Worksy Wallet Quick Pill */}
-        <div className="p-6 rounded-3xl bg-stone-50 border border-stone-200 text-left lg:text-right w-full lg:w-auto shrink-0 shadow-sm">
-          <div className="text-xs uppercase font-bold tracking-wider text-stone-500">Worksy Wallet Balance</div>
-          <div className="text-3xl font-extrabold text-emerald-800 mt-1">₹{walletBalance}</div>
-          <button
-            onClick={onOpenWalletModal}
-            className="mt-2 text-xs sm:text-sm font-bold text-black hover:text-stone-700 transition-colors inline-flex items-center gap-1 cursor-pointer"
-          >
-            <span>+ Add Cash / Manage Wallet</span>
-            <span>→</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setIsEditOpen(true)}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-stone-300 hover:bg-stone-50 text-xs sm:text-sm font-bold text-stone-800 transition-colors self-start lg:self-center cursor-pointer"
+        >
+          <Edit3 size={15} />
+          <span>Edit Profile</span>
+        </button>
       </div>
+
+      {isEditOpen && (
+        <EditProfileModal
+          onClose={() => setIsEditOpen(false)}
+          onSaved={async () => {
+            setIsEditOpen(false);
+            setSavedMessage('Your profile was updated successfully.');
+            await onProfileSaved?.();
+          }}
+        />
+      )}
 
       {/* 1. My Addresses Section */}
       <section className="bg-white border border-stone-200/90 rounded-3xl p-8 sm:p-10 shadow-sm space-y-6">
@@ -312,18 +348,8 @@ export default function ProfileTab({
         </button>
       </section>
 
-      {/* 3. Role Switch & Logout */}
+      {/* Logout */}
       <div className="space-y-4 pt-2">
-        <button
-          onClick={() => switchRole('provider')}
-          className="w-full flex items-center justify-between p-5 sm:p-6 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-900 font-bold text-xs sm:text-sm transition-colors cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <RefreshCw size={17} />
-            <span>Switch to Worksy Provider Mode (Earn as a Pro Partner)</span>
-          </div>
-          <ChevronRight size={18} className="text-stone-500" />
-        </button>
 
         <button
           onClick={() => {

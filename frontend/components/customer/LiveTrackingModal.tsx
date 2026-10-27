@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React, { useState } from 'react';
 import {
   X,
@@ -272,11 +274,7 @@ function LiveTrackingModalContent({
           {/* Provider Contact & Security OTP */}
           <div className="p-4 rounded-3xl bg-white border border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
             <div className="flex items-center gap-3">
-              <img
-                src={booking.providerAvatar}
-                alt={booking.providerName}
-                className="w-12 h-12 rounded-2xl object-cover border border-stone-200"
-              />
+              <UserAvatar src={booking.providerAvatar} name={booking.providerName} className="w-12 h-12 rounded-2xl border border-stone-200" />
               <div>
                 <h4 className="text-sm font-bold text-stone-900">{booking.providerName}</h4>
                 <div className="text-xs text-stone-500">Certified Professional • ⭐ 4.86</div>

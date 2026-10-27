@@ -5,12 +5,13 @@
  * Those gaps are listed in AUDIT_REPORT.md ("Fields the UI shows that the database does not store").
  */
 import {
-  ApiAddress, ApiBooking, ApiBookingStatus, ApiCategory, ApiProvider, ApiService,
+  ApiAddress, ApiBooking, ApiBookingStatus, ApiCategory, ApiNearbyProvider, ApiProvider, ApiProviderCustomer, ApiService,
+  resolveAvatarUrl,
 } from '@/lib/api';
 import type {
   Address, Booking, Provider, ServiceCategory, ServiceItem,
 } from '@/lib/marketplace-data';
-import type { JobStatus, ProviderJob } from '@/lib/provider-data';
+import type { JobStatus, ProviderCustomer, ProviderJob } from '@/lib/provider-data';
 
 const CATEGORY_IMAGES: Record<string, string> = {
   'AC Repair': '/images/category-ac.jpg',
@@ -27,7 +28,6 @@ const PROVIDER_IMAGES: Record<string, string> = {
   'Plumbing': '/images/provider-plumbing.jpg',
 };
 export const FALLBACK_IMAGE = '/images/category-cleaning.jpg';
-export const FALLBACK_AVATAR = '/images/user-charan.jpg';
 
 export const categoryImage = (name: string) => CATEGORY_IMAGES[name] || FALLBACK_IMAGE;
 const providerImage = (category: string) => PROVIDER_IMAGES[category] || CATEGORY_IMAGES[category] || FALLBACK_IMAGE;
@@ -42,7 +42,9 @@ export function mapService(s: ApiService): ServiceItem {
     title: s.title,
     category: s.categoryName,
     categoryId: String(s.categoryId),
-    price: Number(s.price),
+    price: s.startingPrice != null ? Number(s.startingPrice) : 0,   // lowest provider price, NOT a payable price
+    hasPrice: s.startingPrice != null,
+    providerCount: s.providerCount ?? 0,
     rating: 0,          // not stored: services have no ratings in the schema
     reviewsCount: 0,    // not stored
     duration: s.duration,
@@ -57,12 +59,12 @@ export function mapService(s: ApiService): ServiceItem {
 }
 
 /**
- * The schema has no provider<->service link, so a provider "offers" every service in their own category
- * (the same rule the backend enforces when a booking is created).
+ * A provider offers the services in their own category for which THEY have set a price
+ * (provider_service_prices). Prices come from the backend; a service with no price is not offered.
  */
-export function mapProvider(p: ApiProvider, categories: ServiceCategory[], services: ServiceItem[]): Provider {
+export function mapProvider(p: ApiProvider | ApiNearbyProvider, categories: ServiceCategory[], services: ServiceItem[]): Provider {
   const cat = categories.find((c) => c.name.toLowerCase() === p.category.toLowerCase());
-  const offered = services.filter((s) => s.category.toLowerCase() === p.category.toLowerCase());
+  const offered = (p.services ?? []).map((o) => ({ serviceId: String(o.serviceId), title: o.title, price: Number(o.price) }));
   const img = providerImage(p.category);
   return {
     id: String(p.id),
@@ -71,11 +73,14 @@ export function mapProvider(p: ApiProvider, categories: ServiceCategory[], servi
     tagline: p.tagline ?? '',
     category: p.category,
     categoryId: cat ? cat.id : '',
-    rating: p.rating,
-    reviewsCount: 0,    // not returned by /providers (see GET /reviews/provider/{id})
-    distanceKm: 0,      // not stored: no geo data
-    basePrice: offered.length ? Math.min(...offered.map((s) => s.price)) : 0,
-    avatar: img,
+    rating: p.rating ?? 0,                 // meaningful only when reviewsCount > 0
+    reviewsCount: p.reviewCount ?? 0,      // real number of reviews
+    // Only the nearby search knows a distance; the plain provider list has none (0 = unknown).
+    distanceKm: 'distanceKm' in p ? p.distanceKm : 0,
+    basePrice: p.startingPrice != null ? Number(p.startingPrice) : 0,   // 0 = no price set
+    // The provider's own uploaded picture, or '' (the UI then shows the default avatar). The category
+    // image is only the decorative cover, never presented as the provider's face.
+    avatar: resolveAvatarUrl(p.avatarUrl) ?? '',
     coverImage: img,
     verified: p.verified,
     completedJobs: p.completedJobs,
@@ -83,7 +88,7 @@ export function mapProvider(p: ApiProvider, categories: ServiceCategory[], servi
     responseTime: p.responseTime ?? '',
     serviceArea: p.serviceArea ?? '',
     availability: p.availability ?? '',
-    servicesOffered: offered.map((s) => ({ serviceId: s.id, title: s.title, price: s.price })),
+    servicesOffered: offered,
     portfolio: [],
     reviews: [],
     phone: '',
@@ -102,6 +107,7 @@ export function mapAddress(a: ApiAddress): Address {
     area: a.area,
     city: a.city,
     pincode: a.pincode,
+    state: a.state ?? undefined,
     isDefault: a.defaultAddress,
   };
 }
@@ -123,6 +129,10 @@ const CUSTOMER_STATUS: Record<ApiBookingStatus, { status: Booking['status']; ste
 
 const PAYMENT_METHODS: Booking['paymentMethod'][] = ['UPI', 'Card', 'Wallet', 'Cash on Service'];
 
+function mapImages(b: ApiBooking) {
+  return (b.images ?? []).map((i) => ({ id: String(i.id), fileName: i.fileName, sizeBytes: i.sizeBytes, url: i.url }));
+}
+
 export function mapBooking(b: ApiBooking, categoryOfService?: string): Booking {
   const m = CUSTOMER_STATUS[b.status];
   const method = PAYMENT_METHODS.find((x) => x === b.paymentMethod) || 'Cash on Service';
@@ -134,7 +144,7 @@ export function mapBooking(b: ApiBooking, categoryOfService?: string): Booking {
     providerId: String(b.providerId),
     providerUserId: String(b.providerUserId),
     providerName: b.providerBusinessName,
-    providerAvatar: FALLBACK_IMAGE,
+    providerAvatar: resolveAvatarUrl(b.providerAvatarUrl) ?? '',
     providerPhone: b.providerPhone ?? '',
     date: displayDate(b.date),
     timeSlot: b.timeSlot,
@@ -144,6 +154,7 @@ export function mapBooking(b: ApiBooking, categoryOfService?: string): Booking {
       street: b.street, area: b.area, city: b.city, pincode: b.pincode,
     },
     problemDescription: b.problemDescription ?? '',
+    images: mapImages(b),
     addons: b.addons.map((a) => ({ id: String(a.addonId), name: a.name, price: Number(a.priceAtBooking) })),
     basePrice: Number(b.basePrice),
     addonsTotal: Number(b.addonsTotal),
@@ -176,7 +187,7 @@ export function mapJob(b: ApiBooking, categoryOfService?: string): ProviderJob {
     customerId: String(b.customerId),
     customerName: b.customerName,
     customerPhone: b.customerPhone ?? '',
-    customerAvatar: FALLBACK_AVATAR,
+    customerAvatar: resolveAvatarUrl(b.customerAvatarUrl) ?? '',
     serviceTitle: b.serviceTitle,
     category: categoryOfService || '',
     date: displayDate(b.date),
@@ -186,8 +197,11 @@ export function mapJob(b: ApiBooking, categoryOfService?: string): ProviderJob {
     distanceKm: 0,   // not stored: no geo data
     estimatedEarnings: Number(b.totalAmount),
     customerNotes: b.problemDescription ?? '',
+    images: mapImages(b),
     status: JOB_STATUS[b.status],
     finalAmount: b.status === 'COMPLETED' ? Number(b.totalAmount) : undefined,
+    // Real completion day from the backend. Absent for bookings completed before it was recorded: never guessed.
+    completedDateISO: b.status === 'COMPLETED' ? (b.completedDate ?? undefined) : undefined,
   };
 }
 
@@ -198,10 +212,35 @@ export function mapReview(r: ApiReview): ProviderReviewItem {
   return {
     id: String(r.id),
     customerName: r.customerName,
-    customerAvatar: FALLBACK_AVATAR,
+    customerAvatar: resolveAvatarUrl(r.customerAvatarUrl) ?? '',
     rating: r.rating,
     date: displayDate((r.createdAt || '').slice(0, 10)),
     serviceTitle: '',     // not returned by GET /reviews/provider/{id}
     comment: r.comment ?? '',
+  };
+}
+
+const CUSTOMER_STATUS_LABEL: Record<ApiBookingStatus, string> = {
+  PENDING: 'Awaiting your response',
+  CONFIRMED: 'Upcoming',
+  IN_PROGRESS: 'In progress',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+};
+
+/** One real customer of the signed-in provider (GET /provider/customers). Nothing here is invented. */
+export function mapProviderCustomer(c: ApiProviderCustomer): ProviderCustomer {
+  return {
+    id: String(c.customerId),
+    name: c.name,
+    avatar: resolveAvatarUrl(c.avatarUrl) ?? '',
+    phone: c.phone ?? '',
+    totalBookings: c.totalBookings,
+    completedBookings: c.completedBookings,
+    totalSpent: Number(c.totalSpent),
+    lastBookingDate: displayDate(c.lastBookingDate),
+    lastServiceTitle: c.lastServiceTitle,
+    lastStatus: CUSTOMER_STATUS_LABEL[c.lastStatus] ?? c.lastStatus,
+    lastLocation: c.lastLocation ?? '',
   };
 }

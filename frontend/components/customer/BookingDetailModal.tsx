@@ -13,6 +13,7 @@ import {
   Download
 } from 'lucide-react';
 import { Booking } from '@/lib/marketplace-data';
+import BookingImages from '@/components/shared/BookingImages';
 
 interface BookingDetailModalProps {
   booking: Booking | null;
@@ -78,6 +79,12 @@ export default function BookingDetailModal({
                 <span>₹{booking.basePrice}</span>
               </div>
               <div className="text-stone-500">{booking.problemDescription}</div>
+              {booking.images && booking.images.length > 0 && (
+                <div className="pt-2 space-y-1.5">
+                  <div className="text-[10px] uppercase font-bold text-stone-400">Photos you attached:</div>
+                  <BookingImages images={booking.images} />
+                </div>
+              )}
 
               {booking.addons.length > 0 && (
                 <div className="pt-2 border-t border-stone-100 space-y-1">

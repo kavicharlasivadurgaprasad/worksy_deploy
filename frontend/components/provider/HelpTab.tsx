@@ -24,8 +24,8 @@ interface FAQItem {
 const FAQS: FAQItem[] = [
   {
     category: 'payouts',
-    q: 'When do earnings from completed jobs get credited to my balance?',
-    a: 'Earnings are instantly credited to your "Available Balance" the moment the customer confirms completion or the 4-digit completion code is verified. You can withdraw instantly via UPI or IMPS within 15 minutes.'
+    q: 'When does a job count towards my earnings?',
+    a: 'A job counts as completed, and appears in your Earnings tab, once you mark it complete after starting it with the customer\'s 4-digit code. Earnings show the value of your completed jobs less the platform commission.'
   },
   {
     category: 'payouts',
@@ -233,7 +233,7 @@ export function HelpTab({
                     Category
                   </label>
                   <select className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-800">
-                    <option>Payment & Withdrawal Inquiry</option>
+                    <option>Payment & Earnings Inquiry</option>
                     <option>Active Booking Issue / Customer Cancellation</option>
                     <option>Rating Dispute / Customer Feedback</option>
                     <option>Insurance & Damage Claim</option>

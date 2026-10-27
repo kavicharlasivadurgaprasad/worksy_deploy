@@ -68,7 +68,7 @@ export default function OffersTab({
             Daily <span className="italic font-normal">Rewards</span>
           </h2>
           <p className="text-sm sm:text-base text-amber-100 mt-2.5 max-w-xl leading-relaxed">
-            Tap below to scratch and reveal free instant cash credited directly to your Worksy Wallet balance.
+            Tap below to scratch and reveal an exclusive discount voucher for your next service booking.
           </p>
 
           <div className="mt-8">
@@ -81,7 +81,7 @@ export default function OffersTab({
                 <div className="text-xs sm:text-sm font-bold text-amber-300 uppercase tracking-widest">
                   Tap to Scratch & Reveal
                 </div>
-                <div className="text-xs text-stone-400 mt-1">Win up to ₹100 Wallet Cash instantly</div>
+                <div className="text-xs text-stone-400 mt-1">Win up to ₹100 discount voucher instantly</div>
               </button>
             ) : (
               <div className="p-7 rounded-2xl bg-white text-stone-900 max-w-md shadow-2xl border-2 border-amber-400 animate-in zoom-in-95 duration-200">
@@ -94,10 +94,10 @@ export default function OffersTab({
                       Congratulations!
                     </div>
                     <div className="text-2xl font-extrabold text-stone-900 mt-0.5">
-                      ₹50 Wallet Cash Credited!
+                      ₹50 Discount Voucher Unlocked!
                     </div>
                     <div className="text-xs sm:text-sm text-stone-600 mt-1 leading-relaxed">
-                      Automatically applied to your Worksy Wallet balance for any service booking.
+                      Use code MYSTERY50 at checkout to save ₹50 on any service booking.
                     </div>
                   </div>
                 </div>

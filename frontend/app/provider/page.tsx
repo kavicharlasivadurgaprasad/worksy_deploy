@@ -3,12 +3,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, ApiProviderSummary } from '@/lib/api';
 import { mapJob, mapReview } from '@/lib/mappers';
 import {
   JobStatus,
   ProviderJob,
-  ProviderOffer,
   ProviderNotification,
   ProviderReviewItem
 } from '@/lib/provider-data';
@@ -23,7 +22,7 @@ import CustomersTab from '@/components/provider/CustomersTab';
 import EarningsTab from '@/components/provider/EarningsTab';
 import ReviewsTab from '@/components/provider/ReviewsTab';
 import AnalyticsTab from '@/components/provider/AnalyticsTab';
-import OffersTab from '@/components/provider/OffersTab';
+import ServicesPricesTab from '@/components/provider/ServicesPricesTab';
 import ProfileTab from '@/components/provider/ProfileTab';
 import SettingsTab from '@/components/provider/SettingsTab';
 import HelpTab from '@/components/provider/HelpTab';
@@ -31,8 +30,6 @@ import HelpTab from '@/components/provider/HelpTab';
 import JobDetailsModal from '@/components/provider/JobDetailsModal';
 import OngoingJobModal from '@/components/provider/OngoingJobModal';
 import CompleteJobModal, { AdditionalPart } from '@/components/provider/CompleteJobModal';
-import WithdrawModal from '@/components/provider/WithdrawModal';
-import CreateOfferModal from '@/components/provider/CreateOfferModal';
 import NotificationsDrawer from '@/components/provider/NotificationsDrawer';
 import ProviderOnboarding from '@/components/provider/ProviderOnboarding';
 
@@ -62,10 +59,13 @@ export default function ProviderDashboardPage() {
   const [jobs, setJobs] = useState<ProviderJob[]>([]);
   const [reviews, setReviews] = useState<ProviderReviewItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // After the first successful load, background reloads (e.g. after Edit Profile changes the category)
+  // must not replace the whole dashboard with a spinner, or the profile tab would be unmounted.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadError, setLoadError] = useState('');
-  // Client-only (no backend endpoints yet, see AUDIT_REPORT.md)
-  const [withdrawn, setWithdrawn] = useState(0);
-  const [offers, setOffers] = useState<ProviderOffer[]>([]);
+  // Real, backend-calculated numbers for the signed-in provider (completed jobs, rating, earnings). null until loaded.
+  const [summary, setSummary] = useState<ApiProviderSummary | null>(null);
+  // Client-only (no backend endpoint yet, see AUDIT_REPORT.md)
   const [notifications, setNotifications] = useState<ProviderNotification[]>([]);
 
   // Chat: which conversation to jump to (set by "Message" buttons elsewhere) and the unread badge count.
@@ -73,12 +73,6 @@ export default function ProviderDashboardPage() {
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
 
   // Bookings are already scoped to this provider by GET /bookings/provider/{id}: no client-side skill filtering.
-  // Balance = 90% of completed job totals (10% platform commission, same rate the UI already displayed) minus local withdrawals.
-  const availableBalance = Math.max(
-    0,
-    jobs.filter((j) => j.status === 'Completed').reduce((sum, j) => sum + Math.round((j.finalAmount ?? 0) * 0.9), 0) - withdrawn
-  );
-
   const providerId = user?.providerId;
   const category = user?.category || '';
 
@@ -87,19 +81,25 @@ export default function ProviderDashboardPage() {
     setIsLoading(true);
     setLoadError('');
     try {
-      const [bookings, revs] = await Promise.all([api.getProviderBookings(providerId), api.getProviderReviews(providerId)]);
+      const [bookings, revs, sum] = await Promise.all([
+        api.getProviderBookings(providerId),
+        api.getProviderReviews(providerId),
+        api.getProviderSummary(providerId)
+      ]);
       setJobs(bookings.map((b) => mapJob(b, category)));
       setReviews(revs.map(mapReview));
+      setSummary(sum);
     } catch (e) {
       setLoadError(errMsg(e, 'Could not load your jobs.'));
     } finally {
       setIsLoading(false);
+      setHasLoadedOnce(true);
     }
   }, [providerId, category]);
 
   useEffect(() => {
     if (isReady && user?.role === 'provider' && providerId) void loadJobs();
-  }, [isReady, user, providerId, loadJobs]);
+  }, [isReady, user?.role, providerId, loadJobs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!user) return;
@@ -121,8 +121,6 @@ export default function ProviderDashboardPage() {
   const [selectedJobForDetails, setSelectedJobForDetails] = useState<ProviderJob | null>(null);
   const [selectedJobForOngoing, setSelectedJobForOngoing] = useState<ProviderJob | null>(null);
   const [selectedJobForComplete, setSelectedJobForComplete] = useState<ProviderJob | null>(null);
-  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [createOfferModalOpen, setCreateOfferModalOpen] = useState(false);
 
   // Badge Counts
   const newRequestsCount = jobs.filter((j) => j.status === 'New Requests').length;
@@ -181,29 +179,16 @@ export default function ProviderDashboardPage() {
       {
         id: `notif-${Date.now()}`,
         type: 'payment',
-        title: `₹${Math.round((updated.finalAmount ?? 0) * 0.9).toLocaleString('en-IN')} Credited`,
-        message: `Job ${jobId} completed. Earnings added to your available balance.`,
+        title: `Job #${jobId} completed`,
+        message: `${updated.serviceTitle} for ${updated.customerName} is now recorded as completed.`,
         timestamp: 'Just now',
         read: false,
         jobId
       },
       ...prev
     ]);
-  };
-
-  const handleWithdrawSuccess = (amount: number) => {
-    setWithdrawn((prev) => prev + amount);
-    setNotifications((prev) => [
-      {
-        id: `notif-${Date.now()}`,
-        type: 'payment',
-        title: `Withdrawal of ₹${amount.toLocaleString('en-IN')} Initiated`,
-        message: `IMPS transfer submitted. Funds will reflect in your account within 15 minutes.`,
-        timestamp: 'Just now',
-        read: false
-      },
-      ...prev
-    ]);
+    // Completed-job count and earnings are calculated by the backend: refresh them.
+    if (providerId) api.getProviderSummary(providerId).then(setSummary).catch(() => {});
   };
 
   const handleSwitchToCustomer = () => {
@@ -218,6 +203,7 @@ export default function ProviderDashboardPage() {
           <DashboardTab
             jobs={jobs}
             reviews={reviews}
+            summary={summary}
             onAcceptLead={handleAcceptLead}
             onDeclineLead={handleDeclineLead}
             onSelectJob={(job) => setSelectedJobForDetails(job)}
@@ -261,7 +247,16 @@ export default function ProviderDashboardPage() {
       case 'customers':
         return (
           <CustomersTab
-            onOpenCustomerChat={() => setActiveTab('messages')}
+            onOpenCustomerChat={(customer) => {
+              setOpenChatRequest({
+                otherUserId: Number(customer.id),
+                otherUserName: customer.name,
+                otherUserAvatarUrl: customer.avatar || null,
+                otherUserRole: 'CUSTOMER',
+                otherUserPhone: customer.phone || null,
+              });
+              setActiveTab('messages');
+            }}
           />
         );
 
@@ -270,8 +265,7 @@ export default function ProviderDashboardPage() {
           <EarningsTab
             activeSubTab={activeEarningsSubTab}
             setActiveSubTab={setActiveEarningsSubTab}
-            onOpenWithdrawModal={() => setWithdrawModalOpen(true)}
-            availableBalance={availableBalance}
+            summary={summary}
             jobs={jobs}
           />
         );
@@ -282,13 +276,8 @@ export default function ProviderDashboardPage() {
       case 'analytics':
         return <AnalyticsTab jobs={jobs} />;
 
-      case 'offers':
-        return (
-          <OffersTab
-            offers={offers}
-            onOpenCreateOfferModal={() => setCreateOfferModalOpen(true)}
-          />
-        );
+      case 'services':
+        return <ServicesPricesTab />;
 
       case 'profile':
         return (
@@ -309,6 +298,7 @@ export default function ProviderDashboardPage() {
           <DashboardTab
             jobs={jobs}
             reviews={reviews}
+            summary={summary}
             onAcceptLead={handleAcceptLead}
             onDeclineLead={handleDeclineLead}
             onSelectJob={(job) => setSelectedJobForDetails(job)}
@@ -323,7 +313,7 @@ export default function ProviderDashboardPage() {
     return <div className="min-h-screen bg-[#EDEAE1] flex items-center justify-center text-sm text-stone-600">Loading...</div>;
   }
   if (!user.providerId) return <ProviderOnboarding />;
-  if (isLoading) {
+  if (isLoading && !hasLoadedOnce) {
     return <div className="min-h-screen bg-[#EDEAE1] flex items-center justify-center text-sm text-stone-600">Loading your jobs...</div>;
   }
   if (loadError) {
@@ -347,6 +337,8 @@ export default function ProviderDashboardPage() {
         onOpenNotifications={() => setNotificationsOpen(true)}
         newRequestsCount={newRequestsCount}
         unreadMessagesCount={unreadMessagesCount}
+        averageRating={summary ? summary.averageRating : null}
+        reviewCount={summary ? summary.reviewCount : 0}
         onSwitchToCustomer={handleSwitchToCustomer}
         onLogout={() => {
           logout();
@@ -380,7 +372,7 @@ export default function ProviderDashboardPage() {
           setOpenChatRequest({
             otherUserId: Number(job.customerId),
             otherUserName: job.customerName,
-            otherUserAvatarUrl: null,
+            otherUserAvatarUrl: job.customerAvatar || null,
             otherUserRole: 'CUSTOMER',
             otherUserPhone: job.customerPhone || null,
             jobId: job.id,
@@ -402,7 +394,7 @@ export default function ProviderDashboardPage() {
           setOpenChatRequest({
             otherUserId: Number(job.customerId),
             otherUserName: job.customerName,
-            otherUserAvatarUrl: null,
+            otherUserAvatarUrl: job.customerAvatar || null,
             otherUserRole: 'CUSTOMER',
             otherUserPhone: job.customerPhone || null,
             jobId: job.id,
@@ -416,23 +408,6 @@ export default function ProviderDashboardPage() {
         onClose={() => setSelectedJobForComplete(null)}
         onJobCompleted={handleJobCompleted}
       />
-
-      {withdrawModalOpen && (
-        <WithdrawModal
-          isOpen={withdrawModalOpen}
-          availableBalance={availableBalance}
-          onClose={() => setWithdrawModalOpen(false)}
-          onWithdrawSuccess={handleWithdrawSuccess}
-        />
-      )}
-
-      {createOfferModalOpen && (
-        <CreateOfferModal
-          isOpen={createOfferModalOpen}
-          onClose={() => setCreateOfferModalOpen(false)}
-          onOfferCreated={(offer) => setOffers((prev) => [offer, ...prev])}
-        />
-      )}
 
       <NotificationsDrawer
         isOpen={notificationsOpen}

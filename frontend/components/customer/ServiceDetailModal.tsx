@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React, { useState } from 'react';
 import {
   X,
@@ -49,12 +51,11 @@ function ServiceDetailModalContent({
   );
 
   const addonsTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0);
-  const totalPrice = service.price + addonsTotal;
-
-  // Matching providers for this service category
-  const matchingPros = providers.filter(
-    (p) => p.categoryId === service.categoryId
-  );
+  // Only providers who have set their own price for this service can be booked for it.
+  const offerOf = (p: Provider) => p.servicesOffered.find((o) => o.serviceId === service.id);
+  const matchingPros = providers.filter((p) => !!offerOf(p));
+  const lowestPrice = matchingPros.length ? Math.min(...matchingPros.map((p) => offerOf(p)!.price)) : null;
+  const totalPrice = lowestPrice !== null ? lowestPrice + addonsTotal : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
@@ -85,11 +86,6 @@ function ServiceDetailModalContent({
               {service.title}
             </h2>
             <div className="flex items-center gap-3 text-xs mt-1">
-              <span className="flex items-center gap-1 font-bold text-amber-300">
-                <Star size={13} className="fill-amber-400 text-amber-400" />
-                {service.rating} ({service.reviewsCount} reviews)
-              </span>
-              <span>•</span>
               <span className="flex items-center gap-1">
                 <Clock size={13} />
                 {service.duration}
@@ -186,7 +182,7 @@ function ServiceDetailModalContent({
           {/* Top Providers Offering this */}
           {matchingPros.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-sm font-bold text-stone-900">Top Rated Providers for this Service</h3>
+              <h3 className="text-sm font-bold text-stone-900">Providers for this Service</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {matchingPros.slice(0, 2).map((pro) => (
                   <div
@@ -197,16 +193,14 @@ function ServiceDetailModalContent({
                     }}
                     className="p-3 rounded-xl border border-stone-200 hover:border-black cursor-pointer transition-all flex items-center gap-3 bg-stone-50/50"
                   >
-                    <img
-                      src={pro.avatar}
-                      alt={pro.name}
-                      className="w-10 h-10 rounded-xl object-cover border border-stone-200 shrink-0"
-                    />
+                    <UserAvatar src={pro.avatar} name={pro.name} className="w-10 h-10 rounded-xl border border-stone-200" />
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-bold text-stone-900 truncate">{pro.name}</div>
                       <div className="text-[10px] text-stone-500">
-                        ⭐ {pro.rating} • {pro.distanceKm} km away
+                        {pro.reviewsCount > 0 ? `⭐ ${pro.rating.toFixed(1)} (${pro.reviewsCount})` : 'No ratings yet'}
+                        {pro.distanceKm > 0 ? ` • ${pro.distanceKm} km away` : ''}
                       </div>
+                      <div className="text-[11px] font-bold text-emerald-800">₹{offerOf(pro)!.price.toLocaleString('en-IN')}</div>
                     </div>
                   </div>
                 ))}
@@ -255,10 +249,12 @@ function ServiceDetailModalContent({
         {/* Fixed Bottom Booking Bar */}
         <div className="p-4 bg-white border-t border-stone-200 flex items-center justify-between gap-4">
           <div>
-            <div className="text-[10px] uppercase font-bold text-stone-400">Total Payable</div>
+            <div className="text-[10px] uppercase font-bold text-stone-400">
+              {totalPrice !== null ? 'Starting from (each provider sets their own price)' : 'Price'}
+            </div>
             <div className="text-2xl font-display font-semibold text-stone-900 tracking-tight">
-              ₹{totalPrice}
-              {addonsTotal > 0 && (
+              {totalPrice !== null ? `₹${totalPrice.toLocaleString('en-IN')}` : 'Price not set'}
+              {totalPrice !== null && addonsTotal > 0 && (
                 <span className="text-xs font-normal text-stone-500 ml-1.5 font-body">
                   (incl. ₹{addonsTotal} add-ons)
                 </span>
@@ -268,7 +264,8 @@ function ServiceDetailModalContent({
 
           <button
             onClick={() => onBookNow(service, selectedAddons)}
-            className="px-6 py-3 rounded-2xl bg-black text-white text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition-all shadow-md active:scale-95"
+            disabled={totalPrice === null}
+            className="disabled:opacity-40 disabled:cursor-not-allowed px-6 py-3 rounded-2xl bg-black text-white text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition-all shadow-md active:scale-95"
           >
             Proceed to Book
           </button>

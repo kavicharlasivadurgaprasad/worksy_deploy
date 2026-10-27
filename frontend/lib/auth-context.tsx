@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { api, ApiError, ApiLoginResponse, ApiProvider, ApiUser, setUnauthorizedHandler, tokenStore } from '@/lib/api';
+import { api, ApiError, ApiLoginResponse, ApiProfile, ApiProvider, ApiUser, resolveAvatarUrl, setUnauthorizedHandler, tokenStore } from '@/lib/api';
 
 export type UserRole = 'customer' | 'provider';
 
@@ -16,7 +16,7 @@ export interface UserProfile {
   providerId?: number;
   businessName?: string;
   category?: string;
-  rating?: number;
+  rating?: number | null;
   completedJobs?: number;
 }
 
@@ -37,6 +37,8 @@ interface AuthContextType {
   switchRole: (newRole: UserRole) => void;
   /** Re-reads the provider profile (call after provider onboarding). */
   refreshProviderProfile: () => Promise<void>;
+  /** Applies a profile returned by PUT /profile/me so headers, sidebars and chat show the new details at once. */
+  applyProfile: (profile: ApiProfile) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -61,7 +63,7 @@ function toProfile(u: ApiUser, provider?: ApiProvider | null): UserProfile {
     email: u.email,
     role: toRole(u.role),
     phone: u.phone ?? undefined,
-    avatar: u.avatarUrl ?? undefined,
+    avatar: resolveAvatarUrl(u.avatarUrl),
     providerId: provider?.id,
     businessName: provider?.businessName,
     category: provider?.category,
@@ -175,6 +177,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const applyProfile = (profile: ApiProfile) => {
+    if (!user || profile.id !== user.id) return;
+    saveUser({
+      ...user,
+      name: profile.name,
+      phone: profile.phone ?? undefined,
+      avatar: resolveAvatarUrl(profile.avatarUrl),
+      ...(profile.provider
+        ? { businessName: profile.provider.businessName, category: profile.provider.category }
+        : {}),
+    });
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -189,6 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         switchRole,
         refreshProviderProfile,
+        applyProfile,
       }}
     >
       {children}

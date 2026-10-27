@@ -41,7 +41,7 @@ export default function SettingsTab({ onSwitchToCustomer }: SettingsTabProps) {
           Partner <span className="italic font-normal">Settings</span>
         </h2>
         <p className="text-sm sm:text-base text-stone-600 mt-1 leading-relaxed">
-          Manage payout destinations, real-time alert channels, and access credentials.
+          Manage real-time alert channels and access credentials.
         </p>
       </div>
 
@@ -88,33 +88,6 @@ export default function SettingsTab({ onSwitchToCustomer }: SettingsTabProps) {
         </div>
       </section>
 
-      {/* Payment & Payout Preferences */}
-      <section className="bg-white border border-stone-200/90 rounded-3xl p-6 sm:p-8 shadow-xs space-y-4">
-        <div className="flex items-center gap-2.5">
-          <CreditCard size={18} className="text-stone-700" />
-          <h3 className="font-display text-xl font-medium text-stone-900">Payout Credentials</h3>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-bold text-stone-700 block mb-1">Primary UPI ID for Instant Settlements</label>
-            <input
-              type="text"
-              defaultValue="ravi.sharma@okaxis"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-stone-50 border border-stone-200 text-xs sm:text-sm font-mono font-bold text-stone-800"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-stone-700 block mb-1">Bank Account (IFSC &amp; Number)</label>
-            <input
-              type="text"
-              defaultValue="HDFC Bank — HDFC0001234 — ****4920"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-stone-50 border border-stone-200 text-xs sm:text-sm font-semibold text-stone-800"
-            />
-          </div>
-        </div>
-      </section>
-
       {/* Security */}
       <section className="bg-white border border-stone-200/90 rounded-3xl p-6 sm:p-8 shadow-xs space-y-4">
         <div className="flex items-center gap-2.5">
@@ -125,8 +98,8 @@ export default function SettingsTab({ onSwitchToCustomer }: SettingsTabProps) {
         <div className="space-y-3">
           <div className="flex items-center justify-between p-4 rounded-2xl bg-stone-50 border border-stone-200">
             <div>
-              <div className="text-xs font-bold text-stone-900">Two-Factor Authentication for Withdrawals</div>
-              <div className="text-[11px] text-stone-500 mt-0.5">SMS OTP required before initiating balance withdrawals</div>
+              <div className="text-xs font-bold text-stone-900">Two-Factor Authentication</div>
+              <div className="text-[11px] text-stone-500 mt-0.5">Extra SMS verification when signing in</div>
             </div>
             <input
               type="checkbox"

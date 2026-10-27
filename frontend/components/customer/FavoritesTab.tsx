@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React from 'react';
 import { Heart, Star, ShieldCheck, Clock, Trash2, ArrowRight } from 'lucide-react';
 import { Provider, ServiceItem } from '@/lib/marketplace-data';
@@ -99,11 +101,7 @@ export default function FavoritesTab({
                   {/* Avatar & Rating row */}
                   <div className="flex items-end justify-between gap-3">
                     <div className="relative shrink-0">
-                      <img
-                        src={pro.avatar}
-                        alt={pro.name}
-                        className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl object-cover border-4 border-white shadow-md bg-stone-100"
-                      />
+                      <UserAvatar src={pro.avatar} name={pro.name} className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl border-4 border-white shadow-md bg-stone-100" />
                       {pro.verified && (
                         <span
                           className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-1 border-2 border-white shadow-sm"
@@ -115,9 +113,15 @@ export default function FavoritesTab({
                     </div>
 
                     <div className="mb-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/70 text-amber-900 text-xs sm:text-sm font-bold shadow-xs shrink-0">
-                      <Star size={14} className="fill-amber-400 text-amber-400" />
-                      <span>{pro.rating}</span>
-                      <span className="text-stone-400 font-normal text-xs">({pro.reviewsCount})</span>
+                      {pro.reviewsCount > 0 ? (
+                        <>
+                          <Star size={14} className="fill-amber-400 text-amber-400" />
+                          <span>{pro.rating.toFixed(1)}</span>
+                          <span className="text-stone-400 font-normal text-xs">({pro.reviewsCount})</span>
+                        </>
+                      ) : (
+                        <span>No ratings yet</span>
+                      )}
                     </div>
                   </div>
 
@@ -155,7 +159,7 @@ export default function FavoritesTab({
                     </div>
                     <div className="text-right shrink-0">
                       <span className="text-[10px] text-stone-400 uppercase font-bold tracking-wider block">Starts at</span>
-                      <span className="text-base sm:text-lg font-display font-semibold text-emerald-800">₹{pro.basePrice}</span>
+                      <span className="text-base sm:text-lg font-display font-semibold text-emerald-800">{pro.basePrice > 0 ? `₹${pro.basePrice.toLocaleString('en-IN')}` : 'Price not set'}</span>
                     </div>
                   </div>
 

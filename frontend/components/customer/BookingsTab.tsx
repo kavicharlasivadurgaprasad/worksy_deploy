@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React, { useState } from 'react';
 import {
   Clock,
@@ -161,11 +163,7 @@ export default function BookingsTab({
               {/* Main Info */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
                 <div className="flex items-start gap-4 sm:gap-5">
-                  <img
-                    src={booking.providerAvatar}
-                    alt={booking.providerName}
-                    className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl object-cover border border-stone-200 shrink-0"
-                  />
+                  <UserAvatar src={booking.providerAvatar} name={booking.providerName} className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl border border-stone-200" />
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-stone-400">
                       {booking.category}

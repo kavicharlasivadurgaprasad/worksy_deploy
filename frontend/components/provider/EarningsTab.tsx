@@ -11,12 +11,13 @@ import {
 } from 'lucide-react';
 import { EarningsSubTab } from './ProviderSidebar';
 import { ProviderJob } from '@/lib/provider-data';
+import type { ApiProviderSummary } from '@/lib/api';
 
 interface EarningsTabProps {
   activeSubTab: EarningsSubTab;
   setActiveSubTab: (subTab: EarningsSubTab) => void;
-  onOpenWithdrawModal: () => void;
-  availableBalance: number;
+  /** Backend-calculated totals for the signed-in provider (null while loading). */
+  summary: ApiProviderSummary | null;
   /** Real bookings loaded from GET /bookings/provider/{id}. Earnings are derived from completed jobs only. */
   jobs: ProviderJob[];
 }
@@ -31,10 +32,8 @@ interface LedgerRow {
   netAmount: number;
 }
 
-const PLATFORM_FEE_RATE = 0.1; // same 10% commission already used to compute availableBalance
-
 const toCsv = (rows: LedgerRow[]) => {
-  const header = ['Job', 'Date', 'Service', 'Customer', 'Gross Amount', 'Platform Fee', 'Net Credited'];
+  const header = ['Job', 'Completed on', 'Service', 'Customer', 'Gross Amount', 'Platform Fee', 'Net Earned'];
   const lines = rows.map((r) => [
     `#${r.jobId}`,
     r.date,
@@ -50,10 +49,12 @@ const toCsv = (rows: LedgerRow[]) => {
 export default function EarningsTab({
   activeSubTab,
   setActiveSubTab,
-  onOpenWithdrawModal,
-  availableBalance,
+  summary,
   jobs
 }: EarningsTabProps) {
+  // Commission rate comes from the backend config (app.commission.rate); never hardcoded here.
+  const feeRate = summary ? summary.commissionRate : 0;
+  const feePct = Math.round(feeRate * 1000) / 10;
   const completedJobs = useMemo(() => jobs.filter((j) => j.status === 'Completed'), [jobs]);
   const jobAmount = (j: ProviderJob) => j.finalAmount ?? j.estimatedEarnings ?? 0;
 
@@ -67,7 +68,9 @@ export default function EarningsTab({
     [completedJobs]
   );
 
-  // Current-month vs previous-month revenue, computed from each job's real booking date.
+  // Current-month vs previous-month revenue, bucketed by each job's REAL COMPLETION date. A completed job
+  // whose completion date was never recorded is not placed in any month/day (its scheduled date is not used).
+  const completedWithoutDate = completedJobs.filter((j) => !j.completedDateISO).length;
   const now = new Date();
   const monthKey = (iso?: string) => {
     if (!iso) return null;
@@ -80,26 +83,26 @@ export default function EarningsTab({
   const lastMonthKey = `${lastMonthDate.getFullYear()}-${lastMonthDate.getMonth()}`;
 
   const thisMonthRevenue = completedJobs
-    .filter((j) => monthKey(j.dateISO) === thisMonthKey)
+    .filter((j) => monthKey(j.completedDateISO) === thisMonthKey)
     .reduce((sum, j) => sum + jobAmount(j), 0);
   const lastMonthRevenue = completedJobs
-    .filter((j) => monthKey(j.dateISO) === lastMonthKey)
+    .filter((j) => monthKey(j.completedDateISO) === lastMonthKey)
     .reduce((sum, j) => sum + jobAmount(j), 0);
   const monthChangePct = lastMonthRevenue > 0
     ? Math.round(((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 1000) / 10
     : null;
 
-  // Last 7 calendar days, bucketed from real booking dates.
+  // Last 7 calendar days, bucketed from real completion dates.
   const last7Days = useMemo(() => {
     const days: { iso: string; label: string; amount: number }[] = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const label = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
       const amount = completedJobs
-        .filter((j) => j.dateISO === iso)
+        .filter((j) => j.completedDateISO === iso)
         .reduce((sum, j) => sum + jobAmount(j), 0);
       days.push({ iso, label, amount });
     }
@@ -114,10 +117,12 @@ export default function EarningsTab({
     return completedJobs
       .map((j) => {
         const gross = jobAmount(j);
-        const platformFee = Math.round(gross * PLATFORM_FEE_RATE);
+        const platformFee = Math.round(gross * feeRate * 100) / 100;
         return {
           jobId: j.id,
-          date: j.date,
+          date: j.completedDateISO
+            ? new Date(`${j.completedDateISO}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            : 'Completion date not recorded',
           serviceTitle: j.serviceTitle,
           customerName: j.customerName,
           grossAmount: gross,
@@ -126,7 +131,7 @@ export default function EarningsTab({
         };
       })
       .sort((a, b) => (b.jobId > a.jobId ? 1 : -1));
-  }, [completedJobs]);
+  }, [completedJobs, feeRate]);
 
   const handleDownloadCsv = () => {
     if (transactions.length === 0) return;
@@ -150,16 +155,17 @@ export default function EarningsTab({
             Financial Health
           </p>
           <h2 className="mt-1 font-display text-3xl sm:text-4xl md:text-5xl font-medium tracking-tightest text-stone-900 leading-tight">
-            Earnings <span className="italic font-normal">&amp; Payouts</span>
+            Your <span className="italic font-normal">Earnings</span>
           </h2>
           <p className="text-sm sm:text-base text-stone-600 mt-1 leading-relaxed">
-            Track gross billings, platform commissions, transactions ledger, and withdraw available balances.
+            Value of the jobs you have completed, the platform commission, and a ledger of each completed job.
+            This is not a record of payments received.
           </p>
         </div>
 
         {/* Subtabs Switcher */}
         <div className="inline-flex p-1.5 rounded-2xl bg-stone-100 border border-stone-200 self-start sm:self-auto">
-          {(['overview', 'transactions', 'withdrawals'] as const).map((tab) => (
+          {(['overview', 'transactions'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveSubTab(tab)}
@@ -196,7 +202,7 @@ export default function EarningsTab({
             <div className="p-6 rounded-3xl bg-white border border-stone-200 shadow-xs">
               <div className="text-xs uppercase font-bold tracking-wider text-stone-400">Completed Jobs</div>
               <div className="mt-2 text-3xl sm:text-4xl font-display font-medium tracking-tight text-stone-900">
-                {completedJobs.length}
+                {summary ? summary.completedJobs : completedJobs.length}
               </div>
               <div className="mt-2 text-xs font-semibold text-stone-500">
                 {categories.length ? `Across ${categories.join(' & ')}` : 'No completed jobs yet'}
@@ -213,20 +219,19 @@ export default function EarningsTab({
               </div>
             </div>
 
-            {/* Available Balance & Payout CTA */}
+            {/* Net earnings from completed jobs (calculated by the backend) */}
             <div className="p-6 rounded-3xl bg-gradient-to-br from-stone-900 to-stone-800 text-white shadow-md flex flex-col justify-between">
               <div>
-                <div className="text-xs uppercase font-bold tracking-wider text-amber-300">Available to Withdraw</div>
+                <div className="text-xs uppercase font-bold tracking-wider text-amber-300">Net Earnings (completed jobs)</div>
                 <div className="mt-1 text-3xl sm:text-4xl font-display font-medium tracking-tight text-white">
-                  ₹{availableBalance.toLocaleString('en-IN')}
+                  ₹{(summary ? summary.netEarnings : 0).toLocaleString('en-IN')}
                 </div>
               </div>
-              <button
-                onClick={onOpenWithdrawModal}
-                className="mt-4 w-full py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold transition-all text-center shadow"
-              >
-                Withdraw Money →
-              </button>
+              <div className="mt-4 text-xs text-stone-300 leading-relaxed">
+                {summary
+                  ? `₹${summary.grossEarnings.toLocaleString('en-IN')} billed − ₹${summary.platformFee.toLocaleString('en-IN')} platform fee (${feePct}%).`
+                  : 'Loading...'}
+              </div>
             </div>
           </div>
 
@@ -269,9 +274,13 @@ export default function EarningsTab({
                 </div>
 
                 <div className="flex items-center justify-between text-xs text-stone-500">
-                  <span>Worksy platform deductions are processed net at 10%.</span>
-                  <span>All payouts credited to your linked payout method.</span>
+                  <span>Bars show the billed value of jobs by the day they were completed.</span>
                 </div>
+                {completedWithoutDate > 0 && (
+                  <p className="text-xs text-stone-400">
+                    {completedWithoutDate} completed {completedWithoutDate === 1 ? 'job has' : 'jobs have'} no recorded completion date, so {completedWithoutDate === 1 ? 'it is' : 'they are'} not shown by day.
+                  </p>
+                )}
               </>
             ) : (
               <div className="py-12 flex flex-col items-center justify-center text-center gap-2">
@@ -316,11 +325,11 @@ export default function EarningsTab({
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead>
                   <tr className="text-stone-400 font-bold uppercase text-[10px] tracking-wider border-b border-stone-100">
-                    <th className="pb-3">Reference / Date</th>
+                    <th className="pb-3">Reference / Completed on</th>
                     <th className="pb-3">Service &amp; Customer</th>
                     <th className="pb-3 text-right">Gross Total</th>
-                    <th className="pb-3 text-right">Platform Fee (10%)</th>
-                    <th className="pb-3 text-right">Net Credited</th>
+                    <th className="pb-3 text-right">Platform Fee ({feePct}%)</th>
+                    <th className="pb-3 text-right">Net Earned</th>
                     <th className="pb-3 text-right">Status</th>
                   </tr>
                 </thead>
@@ -356,42 +365,6 @@ export default function EarningsTab({
               </table>
             </div>
           )}
-        </div>
-      )}
-
-      {/* SUBTAB 3: WITHDRAWALS */}
-      {activeSubTab === 'withdrawals' && (
-        <div className="space-y-6">
-          <div className="bg-white border border-stone-200/90 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div>
-              <span className="text-xs uppercase font-bold text-stone-400 tracking-wider">Available Balance</span>
-              <div className="mt-1 text-4xl sm:text-5xl font-display font-medium tracking-tight text-emerald-900">
-                ₹{availableBalance.toLocaleString('en-IN')}
-              </div>
-              <p className="text-xs text-stone-500 mt-1">Ready for transfer to your bank or UPI.</p>
-            </div>
-
-            <button
-              onClick={onOpenWithdrawModal}
-              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-black text-white text-xs sm:text-sm font-bold hover:bg-stone-800 transition-colors shadow-md"
-            >
-              <ArrowUpRight size={16} />
-              <span>Withdraw Money Now</span>
-            </button>
-          </div>
-
-          {/* Linked Bank / Payout Method: no payout-methods backend exists yet */}
-          <div className="bg-white border border-stone-200/90 rounded-3xl p-6 sm:p-8 shadow-xs space-y-4">
-            <h3 className="font-display text-xl font-medium text-stone-900">Verified Payout Accounts</h3>
-
-            <div className="py-8 flex flex-col items-center justify-center text-center gap-2 rounded-2xl border border-dashed border-stone-200 bg-stone-50">
-              <Building2 className="text-stone-300" size={28} />
-              <p className="text-sm font-semibold text-stone-500">No payout method linked yet.</p>
-              <p className="text-xs text-stone-400 max-w-sm">
-                Add a bank account or UPI ID when withdrawing to receive future payouts.
-              </p>
-            </div>
-          </div>
         </div>
       )}
     </div>

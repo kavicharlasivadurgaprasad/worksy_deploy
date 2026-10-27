@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React, { useState, useMemo } from 'react';
 import {
   Search,
@@ -21,6 +23,8 @@ import {
   ServiceItem,
   Provider
 } from '@/lib/marketplace-data';
+import NearbyProvidersPanel from '@/components/customer/NearbyProvidersPanel';
+import type { SearchLocation } from '@/lib/geolocation';
 
 interface ExploreTabProps {
   categories: ServiceCategory[];
@@ -34,6 +38,9 @@ interface ExploreTabProps {
   onBookNow: (service?: ServiceItem, provider?: Provider) => void;
   initialCategory?: string;
   initialQuery?: string;
+  /** Where the customer is searching from (GPS or locality). Shared with the header location picker. */
+  searchLocation?: SearchLocation | null;
+  onSearchLocationChange?: (loc: SearchLocation) => void;
 }
 
 export default function ExploreTab({
@@ -47,7 +54,9 @@ export default function ExploreTab({
   onSelectProvider,
   onBookNow,
   initialCategory = 'all',
-  initialQuery = ''
+  initialQuery = '',
+  searchLocation = null,
+  onSearchLocationChange = () => {}
 }: ExploreTabProps) {
   const [activeView, setActiveView] = useState<'services' | 'providers'>('services');
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
@@ -61,6 +70,13 @@ export default function ExploreTab({
   const [availableTodayOnly, setAvailableTodayOnly] = useState<boolean>(false);
   const [maxPrice, setMaxPrice] = useState<number>(3000);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+
+  // Nearby search: null = off (normal list). An array (possibly empty) = results of GET /providers/nearby.
+  const [nearbyResults, setNearbyResults] = useState<Provider[] | null>(null);
+  const handleNearbyResults = (results: Provider[] | null) => {
+    setNearbyResults(results);
+    if (results) setActiveView('providers');
+  };
 
   // Filtered Services
   const filteredServices = useMemo(() => {
@@ -124,6 +140,20 @@ export default function ExploreTab({
     sortBy
   ]);
 
+  // Nearby results come back already filtered by category/radius/availability and sorted nearest first;
+  // the rating / verified / price filters and the rating / price sorts still apply on top of them.
+  const nearbyShown = useMemo(() => {
+    if (!nearbyResults) return null;
+    const list = nearbyResults.filter(
+      (p) => p.rating >= minRating && (!verifiedOnly || p.verified) && p.basePrice <= maxPrice
+    );
+    if (sortBy === 'highest_rated') return [...list].sort((a, b) => b.rating - a.rating);
+    if (sortBy === 'lowest_price') return [...list].sort((a, b) => a.basePrice - b.basePrice);
+    return list;
+  }, [nearbyResults, minRating, verifiedOnly, maxPrice, sortBy]);
+
+  const providersToShow = nearbyShown ?? filteredProviders;
+
   const activeFiltersCount =
     (selectedCategory !== 'all' ? 1 : 0) +
     (minRating > 0 ? 1 : 0) +
@@ -178,7 +208,7 @@ export default function ExploreTab({
                 : 'text-stone-600 hover:text-black'
             }`}
           >
-            Providers ({filteredProviders.length})
+            Providers ({providersToShow.length})
           </button>
         </div>
       </div>
@@ -283,6 +313,16 @@ export default function ExploreTab({
         </div>
       )}
 
+      {/* Nearby providers: location + category + radius */}
+      <NearbyProvidersPanel
+        categories={categories}
+        services={services}
+        selectedCategoryId={selectedCategory}
+        searchLocation={searchLocation}
+        onSearchLocationChange={onSearchLocationChange}
+        onResults={handleNearbyResults}
+      />
+
       {/* VIEW 1: SERVICES LIST */}
       {activeView === 'services' && (
         <div>
@@ -319,9 +359,7 @@ export default function ExploreTab({
                       </span>
                     )}
                     <div className="absolute bottom-3.5 right-3.5 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-bold text-stone-900 shadow">
-                      <Star size={13} className="fill-amber-400 text-amber-400" />
-                      <span>{srv.rating}</span>
-                      <span className="text-[11px] text-stone-500 font-normal">({srv.reviewsCount})</span>
+                      <span>{srv.hasPrice ? `From ₹${srv.price.toLocaleString('en-IN')}` : 'Price not set'}</span>
                     </div>
                   </div>
 
@@ -386,9 +424,9 @@ export default function ExploreTab({
       )}
 
       {/* VIEW 2: PROVIDERS LIST */}
-      {activeView === 'providers' && (
+      {activeView === 'providers' && !(nearbyResults && nearbyResults.length === 0) && (
         <div>
-          {filteredProviders.length === 0 ? (
+          {providersToShow.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-3xl border border-stone-200 p-8">
               <div className="text-4xl mb-3">👨‍🔧</div>
               <h3 className="text-lg font-bold text-stone-900">No providers found in this radius</h3>
@@ -404,7 +442,7 @@ export default function ExploreTab({
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-7">
-              {filteredProviders.map((pro) => {
+              {providersToShow.map((pro) => {
                 const isFav = favorites.includes(pro.id);
                 return (
                   <div
@@ -415,11 +453,7 @@ export default function ExploreTab({
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-4 min-w-0 flex-1">
                           <div className="relative shrink-0">
-                            <img
-                              src={pro.avatar}
-                              alt={pro.name}
-                              className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl object-cover border border-stone-200"
-                            />
+                            <UserAvatar src={pro.avatar} name={pro.name} className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl border border-stone-200" />
                             {pro.verified && (
                               <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-1" title="Worksy Verified Pro">
                                 <ShieldCheck size={12} />
@@ -440,11 +474,17 @@ export default function ExploreTab({
                             </div>
                             <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-stone-600 mt-2.5">
                               <span className="flex items-center gap-1 font-bold text-stone-900">
-                                <Star size={14} className="fill-amber-400 text-amber-400" />
-                                {pro.rating}
+                                {pro.reviewsCount > 0 ? (
+                                  <>
+                                    <Star size={14} className="fill-amber-400 text-amber-400" />
+                                    {pro.rating.toFixed(1)} <span className="font-normal text-stone-500">({pro.reviewsCount})</span>
+                                  </>
+                                ) : (
+                                  <span className="font-medium text-stone-500">No ratings yet</span>
+                                )}
                               </span>
                               <span>•</span>
-                              <span className="text-stone-500 truncate">{pro.completedJobs}+ jobs</span>
+                              <span className="text-stone-500 truncate">{pro.completedJobs} jobs</span>
                               <span>•</span>
                               <span className="text-stone-500 truncate">{pro.experienceYears} yrs exp</span>
                             </div>
@@ -468,7 +508,7 @@ export default function ExploreTab({
                       <div className="grid grid-cols-3 gap-2.5 mt-5 pt-4 border-t border-stone-100 text-center">
                         <div className="p-2.5 rounded-xl bg-stone-50">
                           <div className="text-[11px] text-stone-400 uppercase font-semibold">Distance</div>
-                          <div className="text-xs sm:text-sm font-bold text-stone-800 mt-0.5">{pro.distanceKm} km away</div>
+                          <div className="text-xs sm:text-sm font-bold text-stone-800 mt-0.5">{pro.distanceKm > 0 ? `${pro.distanceKm} km away` : '—'}</div>
                         </div>
                         <div className="p-2.5 rounded-xl bg-stone-50">
                           <div className="text-[11px] text-stone-400 uppercase font-semibold">Response</div>
@@ -476,7 +516,7 @@ export default function ExploreTab({
                         </div>
                         <div className="p-2.5 rounded-xl bg-stone-50">
                           <div className="text-[11px] text-stone-400 uppercase font-semibold">Rate</div>
-                          <div className="text-sm font-display font-semibold text-emerald-800 tracking-tight mt-0.5">₹{pro.basePrice} onwards</div>
+                          <div className="text-sm font-display font-semibold text-emerald-800 tracking-tight mt-0.5">{pro.basePrice > 0 ? `₹${pro.basePrice.toLocaleString('en-IN')} onwards` : 'Price not set'}</div>
                         </div>
                       </div>
 

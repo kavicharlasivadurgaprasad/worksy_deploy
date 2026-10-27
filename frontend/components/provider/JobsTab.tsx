@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React, { useState } from 'react';
 import {
   Search,
@@ -201,11 +203,7 @@ export default function JobsTab({
 
                 {/* Customer Details */}
                 <div className="mt-4 flex items-center gap-3 p-3 rounded-2xl bg-stone-50 border border-stone-100">
-                  <img
-                    src={job.customerAvatar}
-                    alt={job.customerName}
-                    className="w-10 h-10 rounded-xl object-cover border border-stone-200 shrink-0"
-                  />
+                  <UserAvatar src={job.customerAvatar} name={job.customerName} className="w-10 h-10 rounded-xl border border-stone-200" />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-bold text-stone-900 truncate">
                       {job.customerName}

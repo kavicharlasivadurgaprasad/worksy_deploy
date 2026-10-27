@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
-import { ArrowDown, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { ArrowDown, ArrowRight } from 'lucide-react';
 
 const SERVICES = [
   {
@@ -96,14 +96,7 @@ export default function Hero() {
     return () => window.removeEventListener('resize', handleResize);
   }, [activeIdx, centerCard]);
 
-  // Auto-change card and background every 2 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveIdx((prev) => (prev + 1) % SERVICES.length);
-    }, 2000);
 
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <section ref={ref} className="relative min-h-[110vh] w-full overflow-hidden bg-ink py-10 md:py-16">
@@ -228,14 +221,6 @@ export default function Hero() {
             <p className="text-[12px] font-semibold tracking-wider text-paper/70 uppercase">
               Select a service to preview near you:
             </p>
-            {/* 2s Live Auto-change Indicator */}
-            <div className="flex items-center gap-2 text-[11px] text-paper/60">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span>Auto-previewing (every 2s)</span>
-            </div>
           </div>
           
           <div
@@ -282,15 +267,6 @@ export default function Hero() {
                           <p className="mt-1 max-w-[250px] text-[12px] sm:text-[13px] leading-snug text-paper/80">
                             {service.blurb}
                           </p>
-                        </div>
-                        <div
-                          className={`mt-1 flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-full backdrop-blur-sm transition-colors duration-300 ${
-                            isActive
-                              ? 'bg-paper text-ink shadow-md'
-                              : 'bg-paper/15 text-paper group-hover:bg-paper group-hover:text-ink'
-                          }`}
-                        >
-                          <ArrowUpRight size={16} />
                         </div>
                       </div>
                     </div>

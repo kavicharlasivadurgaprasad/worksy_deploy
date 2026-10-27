@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import UserAvatar from '@/components/shared/UserAvatar';
+
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X,
   Check,
@@ -25,6 +27,19 @@ import {
   Coupon,
   Booking
 } from '@/lib/marketplace-data';
+import {
+  ACCEPT_ATTR,
+  MAX_BOOKING_IMAGES,
+  checkImageFiles,
+  formatFileSize
+} from '@/lib/image-upload';
+
+/** A photo the customer picked: the File to upload plus a temporary object URL for the thumbnail. */
+interface SelectedPhoto {
+  id: string;
+  file: File;
+  previewUrl: string;
+}
 
 export interface BookingSubmission {
   service: ServiceItem;
@@ -36,6 +51,8 @@ export interface BookingSubmission {
   timeSlot: string;
   problemDescription: string;
   paymentMethod: 'UPI' | 'Card' | 'Wallet' | 'Cash on Service';
+  /** Optional problem photos (already validated: max 5, JPG/PNG/WEBP, 5 MB each) */
+  images?: File[];
 }
 
 interface BookingFlowModalProps {
@@ -76,11 +93,13 @@ export default function BookingFlowModal({
   const [selectedService, setSelectedService] = useState<ServiceItem>(
     propService || allServices[0]
   );
-  // Backend rule: a provider can only be booked for services in their own category.
-  const [selectedProvider] = useState<Provider | undefined>(
-    propProvider ||
-      allProviders.find((p) => p.categoryId === (propService?.categoryId || allServices[0]?.categoryId))
-  );
+  // The provider is fixed when the flow opens. Without one, pick a provider who has actually set a price
+  // for this service (a provider with no price cannot be booked for it).
+  const [selectedProvider] = useState<Provider | undefined>(() => {
+    if (propProvider) return propProvider;
+    const svc = propService || allServices[0];
+    return allProviders.find((p) => p.servicesOffered.some((o) => o.serviceId === svc?.id));
+  });
   const [selectedAddons, setSelectedAddons] = useState<ServiceAddon[]>(initialAddons);
 
   // Step 2: Date & Slot
@@ -120,7 +139,47 @@ export default function BookingFlowModal({
 
   // Step 4: Problem description
   const [problemDescription, setProblemDescription] = useState('');
-  const [photoAttached, setPhotoAttached] = useState(false);
+  const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
+  const [photoErrors, setPhotoErrors] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Always points at the latest photos so the unmount cleanup can release their object URLs.
+  const photosRef = useRef<SelectedPhoto[]>([]);
+  photosRef.current = photos;
+  // Synchronous guard: state updates are async, so a fast double-click could otherwise submit twice.
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      photosRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    };
+  }, []);
+
+  const handlePhotosSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = Array.from(e.target.files ?? []);
+    e.target.value = ''; // lets the same file be picked again after removing it
+    if (chosen.length === 0) return;
+    const { accepted, errors } = checkImageFiles(chosen, photos.map((p) => p.file));
+    setPhotoErrors(errors);
+    if (accepted.length > 0) {
+      setPhotos((prev) => [
+        ...prev,
+        ...accepted.map((file) => ({
+          id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+          file,
+          previewUrl: URL.createObjectURL(file)
+        }))
+      ]);
+    }
+  };
+
+  const handleRemovePhoto = (id: string) => {
+    setPhotos((prev) => {
+      const target = prev.find((p) => p.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((p) => p.id !== id);
+    });
+    setPhotoErrors([]);
+  };
 
   // Step 5: Review & Payment
   const [couponCode, setCouponCode] = useState('');
@@ -134,7 +193,11 @@ export default function BookingFlowModal({
   const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
 
   // Tally totals
-  const basePrice = selectedService.price;
+  // The base price is the SELECTED PROVIDER's own price for this service (the backend re-reads and uses the
+  // same value; the client never sends a price). No offer = "Price not set" and booking is blocked.
+  const providerOffer = selectedProvider?.servicesOffered.find((o) => o.serviceId === selectedService.id);
+  const priceNotSet = !!selectedProvider && !providerOffer;
+  const basePrice = providerOffer?.price ?? 0;
   const addonsTotal = selectedAddons.reduce((acc, a) => acc + a.price, 0);
   const tax = 0; // the backend prices a booking as base + add-ons; no tax/fees are charged
 
@@ -162,9 +225,9 @@ export default function BookingFlowModal({
   };
 
   const handleFinalConfirm = async () => {
-    if (isSubmitting) return;
-    if (!selectedProvider) {
-      setSubmitError('No provider is available for this service yet.');
+    if (isSubmitting || submittingRef.current) return;
+    if (!selectedProvider || !providerOffer) {
+      setSubmitError('This provider has not set a price for this service yet.');
       return;
     }
     if (!selectedAddress) {
@@ -172,6 +235,7 @@ export default function BookingFlowModal({
       return;
     }
     setSubmitError('');
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const saved = await createBooking({
@@ -182,14 +246,19 @@ export default function BookingFlowModal({
         date: selectedDate.iso,
         timeSlot: selectedSlot,
         problemDescription: problemDescription.trim(),
-        paymentMethod
+        paymentMethod,
+        images: photos.map((p) => p.file)
       });
+      // The booking (with its photos) is saved: the previews are no longer needed.
+      photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      setPhotos([]);
       setCreatedBooking(saved);
       setIsCompleted(true);
       onBookingConfirmed(saved);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Could not create the booking. Please try again.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -332,7 +401,9 @@ export default function BookingFlowModal({
                         <div className="text-sm font-bold text-stone-900">{selectedService.title}</div>
                         <div className="text-xs text-stone-500 mt-0.5">Standard Comprehensive Service</div>
                       </div>
-                      <div className="text-base font-bold text-stone-900">₹{selectedService.price}</div>
+                      <div className={`text-base font-bold ${priceNotSet ? 'text-rose-700' : 'text-stone-900'}`}>
+                        {providerOffer ? `₹${providerOffer.price.toLocaleString('en-IN')}` : 'Price not set'}
+                      </div>
                     </div>
                   </div>
 
@@ -379,21 +450,22 @@ export default function BookingFlowModal({
                     <div className="text-xs font-bold text-stone-800 mb-1.5">Assigned Specialist</div>
                     {selectedProvider ? (
                     <div className="p-3 rounded-2xl border border-stone-200 flex items-center gap-3">
-                      <img
-                        src={selectedProvider.avatar}
-                        alt={selectedProvider.name}
-                        className="w-10 h-10 rounded-xl object-cover border border-stone-200"
-                      />
+                      <UserAvatar src={selectedProvider.avatar} name={selectedProvider.name} className="w-10 h-10 rounded-xl border border-stone-200" />
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold text-stone-900 truncate">{selectedProvider.name}</div>
                         <div className="text-[10px] text-stone-500">
-                          ⭐ {selectedProvider.rating.toFixed(1)} • {selectedProvider.completedJobs} jobs completed
+                          {selectedProvider.reviewsCount > 0 ? `⭐ ${selectedProvider.rating.toFixed(1)} (${selectedProvider.reviewsCount})` : 'No ratings yet'} • {selectedProvider.completedJobs} jobs completed
                         </div>
                       </div>
                     </div>
                     ) : (
                       <div className="p-3 rounded-2xl border border-rose-200 bg-rose-50 text-xs text-rose-700 font-semibold">
-                        No provider has joined this category yet, so it can&apos;t be booked right now.
+                        No provider has set a price for this service yet, so it can&apos;t be booked right now.
+                      </div>
+                    )}
+                    {priceNotSet && (
+                      <div className="mt-2 p-3 rounded-2xl border border-rose-200 bg-rose-50 text-xs text-rose-700 font-semibold">
+                        This provider has not set a price for this service yet, so it can&apos;t be booked.
                       </div>
                     )}
                   </div>
@@ -577,22 +649,77 @@ export default function BookingFlowModal({
                     />
                   </div>
 
-                  {/* Photo attachment simulator */}
+                  {/* Photo attachment */}
                   <div>
-                    <div className="text-xs font-bold text-stone-800 mb-1.5">Attach Photos</div>
+                    <div className="text-xs font-bold text-stone-800 mb-1.5">
+                      Attach Photos{' '}
+                      <span className="font-normal text-stone-400">
+                        ({photos.length}/{MAX_BOOKING_IMAGES}, JPG / PNG / WEBP, up to 5 MB each)
+                      </span>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept={ACCEPT_ATTR}
+                      multiple
+                      onChange={handlePhotosSelected}
+                      className="hidden"
+                    />
                     <button
-                      onClick={() => setPhotoAttached(!photoAttached)}
-                      className={`w-full py-4 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors ${
-                        photoAttached
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={photos.length >= MAX_BOOKING_IMAGES}
+                      className={`w-full py-4 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                        photos.length > 0
                           ? 'border-emerald-500 bg-emerald-50/50 text-emerald-800'
                           : 'border-stone-300 hover:border-black bg-stone-50 text-stone-600'
                       }`}
                     >
                       <Camera size={20} />
                       <span className="text-xs font-semibold">
-                        {photoAttached ? '✓ 1 Photo Attached (ac_leak.jpg)' : 'Click to add photos of unit / leak'}
+                        {photos.length >= MAX_BOOKING_IMAGES
+                          ? `Maximum of ${MAX_BOOKING_IMAGES} photos reached`
+                          : photos.length > 0
+                            ? `✓ ${photos.length} photo${photos.length > 1 ? 's' : ''} attached - click to add more`
+                            : 'Click to add photos of unit / leak'}
                       </span>
                     </button>
+
+                    {photoErrors.length > 0 && (
+                      <div className="mt-2 text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 space-y-0.5">
+                        {photoErrors.map((msg, i) => (
+                          <div key={i}>{msg}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    {photos.length > 0 && (
+                      <ul className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {photos.map((p) => (
+                          <li
+                            key={p.id}
+                            className="relative rounded-xl overflow-hidden border border-stone-200 bg-white"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={p.previewUrl} alt={p.file.name} className="w-full h-24 object-cover" />
+                            <div className="px-2 py-1.5">
+                              <div className="text-[11px] font-semibold text-stone-800 truncate" title={p.file.name}>
+                                {p.file.name}
+                              </div>
+                              <div className="text-[10px] text-stone-500">{formatFileSize(p.file.size)}</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePhoto(p.id)}
+                              aria-label={`Remove ${p.file.name}`}
+                              className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/70 hover:bg-black text-white"
+                            >
+                              <X size={12} />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 </div>
               )}
@@ -685,11 +812,10 @@ export default function BookingFlowModal({
                   {/* Payment Mode Selector */}
                   <div className="space-y-2 pt-2">
                     <div className="text-xs font-bold text-stone-800">Choose Payment Method</div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {[
                         { id: 'UPI', label: 'UPI (GPay, PhonePe)', icon: '⚡' },
                         { id: 'Card', label: 'Credit / Debit Card', icon: '💳' },
-                        { id: 'Wallet', label: `Wallet (₹${walletBalance})`, icon: '👛' },
                         { id: 'Cash on Service', label: 'Pay After Service', icon: '💵' }
                       ].map((mode) => {
                         const isSelected = paymentMethod === mode.id;
@@ -728,7 +854,7 @@ export default function BookingFlowModal({
             {currentStep < 5 ? (
               <button
                 onClick={() => setCurrentStep((prev) => (prev + 1) as any)}
-                disabled={(currentStep === 1 && !selectedProvider) || (currentStep === 3 && !selectedAddress)}
+                disabled={(currentStep === 1 && (!selectedProvider || priceNotSet)) || (currentStep === 3 && !selectedAddress)}
                 className="px-6 py-3 rounded-2xl bg-black text-white text-xs font-bold uppercase tracking-wider hover:bg-stone-800 transition-all shadow-md active:scale-95 flex items-center gap-1.5"
               >
                 <span>Continue</span>

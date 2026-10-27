@@ -15,6 +15,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { ProviderJob } from '@/lib/provider-data';
+import BookingImages from '@/components/shared/BookingImages';
 
 interface JobDetailsModalProps {
   job: ProviderJob | null;
@@ -168,6 +169,16 @@ export default function JobDetailsModal({
             </div>
           )}
 
+          {/* Photos attached by the customer */}
+          {job.images && job.images.length > 0 && (
+            <div className="bg-white border border-stone-200/80 rounded-2xl p-4.5 space-y-2.5">
+              <div className="text-xs font-semibold text-stone-900 uppercase tracking-wider">
+                Customer Photos ({job.images.length})
+              </div>
+              <BookingImages images={job.images} />
+            </div>
+          )}
+
           {/* Pricing Breakdown */}
           <div className="bg-white border border-stone-200/80 rounded-2xl p-5 space-y-3">
             <h4 className="font-display font-semibold text-stone-900 text-sm flex items-center justify-between">
@@ -185,7 +196,7 @@ export default function JobDetailsModal({
                 <span className="text-rose-600 font-medium">-₹{(price * 0.1).toFixed(0)}</span>
               </div>
               <div className="flex items-center justify-between pt-2 font-display text-base font-semibold text-stone-900">
-                <span>Net Payout to You</span>
+                <span>Net Earnings</span>
                 <span className="text-emerald-700 font-bold">₹{(price * 0.9).toFixed(0)}</span>
               </div>
             </div>

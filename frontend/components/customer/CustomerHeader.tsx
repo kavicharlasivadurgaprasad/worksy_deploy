@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -7,12 +9,10 @@ import {
   MapPin,
   Search,
   Bell,
-  Wallet,
   User,
   ChevronDown,
-  Sparkles,
+  ChevronRight,
   LogOut,
-  RefreshCw,
   HelpCircle,
   Settings,
   Heart,
@@ -20,7 +20,7 @@ import {
   CheckCircle2,
   Home,
   MessageSquare,
-  X
+  Gift,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { CustomerTab } from './CustomerSidebar';
@@ -28,7 +28,7 @@ import { CustomerTab } from './CustomerSidebar';
 interface CustomerHeaderProps {
   selectedLocation: string;
   onOpenLocationModal: () => void;
-  onOpenWalletModal: () => void;
+  onOpenWalletModal?: () => void;
   onOpenNotifications: () => void;
   unreadNotifsCount?: number;
   walletBalance?: number;
@@ -57,9 +57,8 @@ export default function CustomerHeader({
   onLogout,
 }: CustomerHeaderProps) {
   const router = useRouter();
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout } = useAuth();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-  const [searchInput, setSearchInput] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
@@ -95,6 +94,55 @@ export default function CustomerHeader({
     },
   ];
 
+  const profileMenuItems = [
+    {
+      id: 'profile' as CustomerTab,
+      label: 'My Profile & Addresses',
+      description: 'Personal details & saved addresses',
+      icon: User,
+      tileBg: 'bg-stone-100 text-stone-900 group-hover:bg-stone-900 group-hover:text-white',
+    },
+    {
+      id: 'bookings' as CustomerTab,
+      label: 'My Bookings',
+      description: 'Active services & booking history',
+      icon: CalendarCheck,
+      tileBg: 'bg-amber-100 text-amber-900 group-hover:bg-amber-600 group-hover:text-white',
+      badge: activeBookingsCount > 0 ? `${activeBookingsCount} active` : undefined,
+      badgeClass: 'bg-amber-100 text-amber-900 border border-amber-300',
+    },
+    {
+      id: 'favorites' as CustomerTab,
+      label: 'Saved Providers',
+      description: 'Your shortlisted professionals',
+      icon: Heart,
+      tileBg: 'bg-rose-100 text-rose-800 group-hover:bg-rose-600 group-hover:text-white',
+      badge: favoritesCount > 0 ? `${favoritesCount}` : undefined,
+      badgeClass: 'bg-rose-100 text-rose-800 border border-rose-200',
+    },
+    {
+      id: 'offers' as CustomerTab,
+      label: 'Offers & Coupons',
+      description: 'Exclusive discounts & vouchers',
+      icon: Gift,
+      tileBg: 'bg-emerald-100 text-emerald-900 group-hover:bg-emerald-600 group-hover:text-white',
+    },
+    {
+      id: 'settings' as CustomerTab,
+      label: 'Preferences & Security',
+      description: 'Account settings, notifications & privacy',
+      icon: Settings,
+      tileBg: 'bg-stone-100 text-stone-900 group-hover:bg-stone-900 group-hover:text-white',
+    },
+    {
+      id: 'help' as CustomerTab,
+      label: 'Help & Support',
+      description: 'FAQs, ticket status & customer care',
+      icon: HelpCircle,
+      tileBg: 'bg-blue-100 text-blue-900 group-hover:bg-blue-600 group-hover:text-white',
+    },
+  ];
+
   useEffect(() => {
     const handleOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -104,25 +152,6 @@ export default function CustomerHeader({
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
-
-  const handleSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && searchInput.trim()) {
-      if (onSearchSubmit) {
-        onSearchSubmit(searchInput.trim());
-      }
-      setActiveTab('explore');
-    }
-  };
-
-  const handleSearchSubmitForm = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchInput.trim()) {
-      if (onSearchSubmit) {
-        onSearchSubmit(searchInput.trim());
-      }
-      setActiveTab('explore');
-    }
-  };
 
   return (
     <header className="sticky top-0 z-30 w-full bg-[#EDEAE1]/95 backdrop-blur-xl border-b border-[#D8D2C4] transition-all text-stone-900 shadow-sm">
@@ -146,7 +175,7 @@ export default function CustomerHeader({
           {/* Location Selector Button */}
           <button
             onClick={onOpenLocationModal}
-            className="hidden sm:flex items-center gap-1.5 text-xs text-stone-700 hover:text-stone-950 transition-colors py-1.5 px-2.5 rounded-lg hover:bg-black/5"
+            className="hidden sm:flex items-center gap-1.5 text-xs text-stone-700 hover:text-stone-950 transition-colors py-1.5 px-2.5 rounded-lg hover:bg-black/5 cursor-pointer"
             title="Change service location"
           >
             <MapPin size={13} className="text-stone-500 shrink-0" />
@@ -164,7 +193,7 @@ export default function CustomerHeader({
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`relative flex items-center gap-2 px-3 lg:px-3.5 py-1.5 sm:py-2 rounded-xl text-[13px] tracking-tight transition-all whitespace-nowrap ${
+                className={`relative flex items-center gap-2 px-3 lg:px-3.5 py-1.5 sm:py-2 rounded-xl text-[13px] tracking-tight transition-all whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'bg-stone-900 text-white font-semibold shadow-sm border border-stone-800'
                     : 'text-stone-700 font-medium hover:text-stone-950 hover:bg-black/5'
@@ -187,7 +216,7 @@ export default function CustomerHeader({
           {/* Notifications Bell with Dot */}
           <button
             onClick={onOpenNotifications}
-            className="relative p-2 rounded-full hover:bg-black/5 text-stone-700 hover:text-stone-950 transition-colors"
+            className="relative p-2 rounded-full hover:bg-black/5 text-stone-700 hover:text-stone-950 transition-colors cursor-pointer"
             title="Notifications"
           >
             <Bell size={18} />
@@ -200,154 +229,119 @@ export default function CustomerHeader({
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-              className="flex items-center gap-2 p-1 pl-1.5 pr-2 rounded-full hover:bg-black/5 transition-colors"
+              className={`flex items-center gap-2.5 py-1 pl-1 pr-3 rounded-full border transition-all duration-200 cursor-pointer ${
+                profileDropdownOpen
+                  ? 'bg-white border-stone-400 shadow-sm ring-2 ring-stone-900/10'
+                  : 'bg-white/80 hover:bg-white border-[#D5CFC2] hover:border-stone-400 shadow-2xs hover:shadow-sm'
+              }`}
+              title="Account Menu"
             >
-              <img
-                src="/images/user-charan.jpg"
-                alt={user?.name || "Profile"}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250';
-                }}
-                className="w-7 h-7 rounded-full object-cover border border-stone-300"
-              />
-              <span className="text-xs font-medium text-stone-800">
-                {user?.name?.split(' ')[0]}
+              <UserAvatar src={user?.avatar} name={user?.name || "Profile"} className="w-7 h-7 rounded-full border border-stone-300" />
+              <span className="text-xs font-bold text-stone-900">
+                {user?.name?.split(' ')[0] || 'Account'}
               </span>
-              <ChevronDown size={12} className="text-stone-500" />
+              <ChevronDown
+                size={13}
+                className={`text-stone-600 transition-transform duration-200 ${
+                  profileDropdownOpen ? 'rotate-180 text-stone-950' : ''
+                }`}
+              />
             </button>
 
-            {/* Menu */}
+            {/* Menu Dropdown Card */}
             {profileDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white/98 border border-stone-200 backdrop-blur-2xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-stone-900">
-                <div className="px-4 py-2.5 border-b border-stone-100">
-                  <div className="text-xs font-bold text-stone-900">{user?.name}</div>
-                  <div className="text-[11px] text-stone-500 truncate">{user?.email}</div>
-                  <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
-                    <CheckCircle2 size={12} />
-                    <span>Verified Customer</span>
+              <div className="absolute right-0 mt-2.5 w-76 sm:w-80 rounded-2xl bg-white border border-stone-200/90 shadow-2xl shadow-stone-900/15 py-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-stone-900">
+                {/* User Info Header Card */}
+                <div className="px-4 py-3 border-b border-stone-100 flex items-start gap-3">
+                  <UserAvatar src={user?.avatar} name={user?.name || "Profile"} className="w-10 h-10 rounded-full border border-stone-200 shadow-2xs mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold text-stone-950 truncate leading-snug">
+                      {user?.name || 'Customer Account'}
+                    </div>
+                    <div className="text-xs font-medium text-stone-500 truncate leading-tight">
+                      {user?.email || 'customer@worksy.in'}
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 rounded-full">
+                        <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
+                        <span>Verified Customer</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      setActiveTab('profile');
-                      setProfileDropdownOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-stone-700 hover:bg-stone-100 transition-colors text-left"
-                  >
-                    <User size={14} className="text-stone-500" />
-                    <span>My Profile & Addresses</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveTab('bookings');
-                      setProfileDropdownOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-stone-700 hover:bg-stone-100 transition-colors text-left"
-                  >
-                    <CalendarCheck size={14} className="text-stone-500" />
-                    <span>My Bookings</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveTab('favorites');
-                      setProfileDropdownOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-stone-700 hover:bg-stone-100 transition-colors text-left"
-                  >
-                    <Heart size={14} className="text-stone-500" />
-                    <span>Saved Providers</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveTab('settings');
-                      setProfileDropdownOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-stone-700 hover:bg-stone-100 transition-colors text-left"
-                  >
-                    <Settings size={14} className="text-stone-500" />
-                    <span>Preferences & Security</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveTab('help');
-                      setProfileDropdownOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-stone-700 hover:bg-stone-100 transition-colors text-left"
-                  >
-                    <HelpCircle size={14} className="text-stone-500" />
-                    <span>Help & Support Center</span>
-                  </button>
+
+
+                {/* Options List */}
+                <div className="px-2 py-1 space-y-0.5">
+                  <p className="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-bold text-stone-400">
+                    Account & Navigation
+                  </p>
+
+                  {profileMenuItems.map((item) => {
+                    const Icon = item.icon;
+                    const isCurrent = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          setProfileDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all cursor-pointer group ${
+                          isCurrent
+                            ? 'bg-stone-100 text-stone-950 font-semibold ring-1 ring-stone-200'
+                            : 'text-stone-800 hover:bg-stone-50 hover:text-stone-950'
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-colors ${item.tileBg}`}
+                        >
+                          <Icon size={15} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[13px] font-bold text-stone-900 group-hover:text-black leading-tight">
+                              {item.label}
+                            </span>
+                            {item.badge && (
+                              <span
+                                className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shrink-0 ${item.badgeClass}`}
+                              >
+                                {item.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] font-medium text-stone-500 group-hover:text-stone-700 truncate leading-tight mt-0.5">
+                            {item.description}
+                          </p>
+                        </div>
+                        <ChevronRight
+                          size={14}
+                          className="text-stone-300 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0 ml-1"
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <div className="border-t border-stone-100 my-1" />
 
-                {/* Switch to Provider Portal */}
-                <div className="px-2 py-1">
+
+                {/* Log Out */}
+                <div className="px-2 pt-1 pb-0.5 border-t border-stone-100">
                   <button
-                    onClick={() => {
-                      switchRole('provider');
-                      setProfileDropdownOpen(false);
-                    }}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-900 text-xs font-semibold transition-colors"
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors text-left group cursor-pointer"
                   >
-                    <div className="flex items-center gap-2">
-                      <RefreshCw size={13} className="text-stone-600" />
-                      <span>Switch to Provider Mode</span>
+                    <div className="w-8 h-8 rounded-lg bg-rose-50 group-hover:bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 transition-colors">
+                      <LogOut size={14} />
                     </div>
-                    <span className="text-[10px] font-mono bg-stone-200 px-1.5 py-0.5 rounded text-stone-700">Pro</span>
+                    <span>Sign Out</span>
                   </button>
                 </div>
-
-                <div className="border-t border-stone-100 my-1" />
-
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 transition-colors text-left font-medium cursor-pointer"
-                >
-                  <LogOut size={14} />
-                  <span>Log Out</span>
-                </button>
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Sub-Header: Search Bar Below Navbar */}
-      <div className="w-full border-t border-[#D8D2C4] bg-[#E3DDD0]/90 py-2.5 px-4 sm:px-6 lg:px-8 backdrop-blur-md">
-        <div className="max-w-2xl mx-auto">
-          <form
-            onSubmit={handleSearchSubmitForm}
-            className="relative w-full flex items-center"
-          >
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={handleSearchKey}
-              placeholder="Search for a service, professional or category..."
-              className="w-full pl-11 pr-24 py-2 rounded-full bg-white border border-[#D5CFC2] hover:border-stone-400 focus:border-stone-900 focus:bg-white text-xs sm:text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none transition-all shadow-xs"
-            />
-            {searchInput && (
-              <button
-                type="button"
-                onClick={() => setSearchInput('')}
-                className="absolute right-20 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1 transition-colors"
-                title="Clear search"
-              >
-                <X size={14} />
-              </button>
-            )}
-            <button
-              type="submit"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3.5 py-1.5 rounded-full bg-stone-900 hover:bg-black text-white text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 shadow-sm"
-            >
-              <span>Search</span>
-            </button>
-          </form>
         </div>
       </div>
     </header>

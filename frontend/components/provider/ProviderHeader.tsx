@@ -1,5 +1,7 @@
 'use client';
 
+import UserAvatar from '@/components/shared/UserAvatar';
+
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -11,7 +13,7 @@ import {
   Users,
   Star,
   BarChart3,
-  Gift,
+  Wrench,
   Bell,
   Settings,
   HelpCircle,
@@ -37,6 +39,9 @@ interface ProviderHeaderProps {
   onOpenNotifications: () => void;
   newRequestsCount: number;
   unreadMessagesCount?: number;
+  /** Real average rating (null = no ratings yet) and the number of ratings behind it. */
+  averageRating: number | null;
+  reviewCount: number;
   onSwitchToCustomer: () => void;
   onLogout?: () => void;
 }
@@ -49,7 +54,9 @@ export default function ProviderHeader({
   unreadNotifsCount,
   onOpenNotifications,
   newRequestsCount,
-  unreadMessagesCount = 2,
+  unreadMessagesCount = 0,
+  averageRating,
+  reviewCount,
   onSwitchToCustomer,
   onLogout
 }: ProviderHeaderProps) {
@@ -86,9 +93,9 @@ export default function ProviderHeader({
     { id: 'profile', label: 'My Profile', icon: User },
     { id: 'calendar', label: 'Calendar & Schedule', icon: Calendar },
     { id: 'customers', label: 'Customers (CRM)', icon: Users },
-    { id: 'reviews', label: 'Reviews & Ratings', icon: Star, badge: '4.86 ⭐' },
+    { id: 'reviews', label: 'Reviews & Ratings', icon: Star, badge: reviewCount > 0 && averageRating !== null ? `${averageRating.toFixed(1)} ⭐` : 'No ratings yet' },
     { id: 'analytics', label: 'Performance Analytics', icon: BarChart3 },
-    { id: 'offers', label: 'Special Offers', icon: Gift }
+    { id: 'services', label: 'Manage Services & Prices', icon: Wrench }
   ];
 
   const handleDropdownSelect = (tab: ProviderMainTab) => {
@@ -221,11 +228,7 @@ export default function ProviderHeader({
               aria-label="Provider account menu"
             >
               <div className="relative">
-                <img
-                  src={user?.avatar || "/images/provider-ac.jpg"}
-                  alt={user?.name || "Profile"}
-                  className="w-9 h-9 sm:w-9.5 sm:h-9.5 rounded-xl object-cover border border-stone-200"
-                />
+                <UserAvatar src={user?.avatar} name={user?.name || "Profile"} className="w-9 h-9 sm:w-9.5 sm:h-9.5 rounded-xl border border-stone-200" />
                 <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
               </div>
 
@@ -254,11 +257,7 @@ export default function ProviderHeader({
               <div className="absolute right-0 mt-2.5 w-76 sm:w-80 bg-white rounded-3xl shadow-2xl border border-stone-200/90 py-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                 {/* Header Card inside Dropdown */}
                 <div className="px-4 py-3 border-b border-stone-100 flex items-center gap-3">
-                  <img
-                    src={user?.avatar || "/images/provider-ac.jpg"}
-                    alt={user?.name || "Profile"}
-                    className="w-11 h-11 rounded-2xl object-cover border border-stone-200 shrink-0"
-                  />
+                  <UserAvatar src={user?.avatar} name={user?.name || "Profile"} className="w-11 h-11 rounded-2xl border border-stone-200" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <h4 className="font-display font-semibold text-stone-900 text-sm truncate">
@@ -271,11 +270,14 @@ export default function ProviderHeader({
                     <p className="text-xs text-stone-500 truncate">{user?.businessName}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded-md">
-                        <Star size={10} className="fill-amber-500 text-amber-500" />
-                        4.86
-                      </span>
-                      <span className="text-[11px] text-stone-400 truncate">
-                        Indiranagar, Bengaluru
+                        {reviewCount > 0 && averageRating !== null ? (
+                          <>
+                            <Star size={10} className="fill-amber-500 text-amber-500" />
+                            {averageRating.toFixed(1)}
+                          </>
+                        ) : (
+                          'No ratings yet'
+                        )}
                       </span>
                     </div>
                   </div>

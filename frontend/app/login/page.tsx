@@ -11,25 +11,10 @@ import {
   ArrowLeft,
   User,
   Briefcase,
-  Phone,
-  ShieldCheck,
 } from 'lucide-react';
 import { useAuth, UserRole, UserProfile } from '@/lib/auth-context';
 import { api, ApiError } from '@/lib/api';
 import { useGoogleSignInOverlay } from '@/lib/social-auth';
-
-const COUNTRY_CODES = [
-  { code: '+91', label: 'IN +91' },
-  { code: '+1', label: 'US/CA +1' },
-  { code: '+44', label: 'UK +44' },
-  { code: '+61', label: 'AU +61' },
-  { code: '+971', label: 'UAE +971' },
-  { code: '+65', label: 'SG +65' },
-  { code: '+49', label: 'DE +49' },
-  { code: '+81', label: 'JP +81' },
-];
-
-const PHONE_REGEX = /^\+[1-9]\d{7,14}$/;
 
 function LoginForm() {
   const router = useRouter();
@@ -38,7 +23,6 @@ function LoginForm() {
     login,
     register,
     loginWithGoogle,
-    loginWithPhone,
     isReady,
     isAuthenticated,
     user: sessionUser,
@@ -76,24 +60,7 @@ function LoginForm() {
     (message) => setErrorMsg(message)
   );
 
-  // Phone / OTP flow
-  const [phoneStep, setPhoneStep] = useState<'closed' | 'number' | 'otp'>('closed');
-  const [countryCode, setCountryCode] = useState('+91');
-  const [phoneDigits, setPhoneDigits] = useState('');
-  const [otp, setOtp] = useState('');
-  const [phoneBusy, setPhoneBusy] = useState<null | 'send' | 'verify' | 'resend'>(null);
-  const [otpInfo, setOtpInfo] = useState('');
-  const [resendCooldown, setResendCooldown] = useState(0);
-
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const t = setInterval(() => setResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
-    return () => clearInterval(t);
-  }, [resendCooldown]);
-
-  const fullPhone = () => `${countryCode}${phoneDigits.replace(/\D/g, '')}`;
-
-  const anyBusy = isLoading || googleBusy || phoneBusy !== null;
+  const anyBusy = isLoading || googleBusy;
 
   useEffect(() => {
     const modeParam = searchParams.get('mode');
@@ -157,89 +124,22 @@ function LoginForm() {
     }
   };
 
-  const openPhoneLogin = () => {
-    setErrorMsg('');
-    setOtpInfo('');
-    setOtp('');
-    setPhoneStep('number');
-  };
-
-  const closePhoneLogin = () => {
-    setErrorMsg('');
-    setOtpInfo('');
-    setPhoneStep('closed');
-  };
-
-  const handleSendOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setOtpInfo('');
-
-    const phone = fullPhone();
-    if (!PHONE_REGEX.test(phone)) {
-      setErrorMsg('Please enter a valid phone number, e.g. +91 9876543210.');
-      return;
-    }
-
-    setPhoneBusy('send');
-    try {
-      const res = await api.sendPhoneOtp(phone);
-      setResendCooldown(res.resendCooldownSeconds);
-      setOtp('');
-      setOtpInfo('OTP sent successfully.');
-      setPhoneStep('otp');
-    } catch (err) {
-      setErrorMsg(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
-    } finally {
-      setPhoneBusy(null);
-    }
-  };
-
-  const handleResendOtp = async () => {
-    if (resendCooldown > 0 || phoneBusy) return;
-    setErrorMsg('');
-    setOtpInfo('');
-    setPhoneBusy('resend');
-    try {
-      const res = await api.sendPhoneOtp(fullPhone());
-      setResendCooldown(res.resendCooldownSeconds);
-      setOtp('');
-      setOtpInfo('OTP sent successfully.');
-    } catch (err) {
-      setErrorMsg(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
-    } finally {
-      setPhoneBusy(null);
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-
-    if (!/^\d{6}$/.test(otp)) {
-      setErrorMsg('Enter the 6-digit code sent to your phone.');
-      return;
-    }
-
-    setPhoneBusy('verify');
-    try {
-      const profile = await loginWithPhone(fullPhone(), otp, role);
-      redirectForRole(profile);
-    } catch (err) {
-      setErrorMsg(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
-    } finally {
-      setPhoneBusy(null);
-    }
-  };
-
-  const handleForgotSubmit = (e: React.FormEvent) => {
+  const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetEmail || !resetEmail.includes('@')) {
       setErrorMsg('Please enter a valid email address.');
       return;
     }
-    // There is no password-reset endpoint in the backend yet, so do not pretend an email was sent.
-    setErrorMsg('Password reset is not available yet. Please contact support.');
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      await api.forgotPassword(resetEmail);
+      setResetSent(true);
+    } catch (err: any) {
+      setErrorMsg(err instanceof ApiError ? err.message : 'Failed to send password reset email.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -307,7 +207,7 @@ function LoginForm() {
             ) : (
               <form onSubmit={handleForgotSubmit} className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-black tracking-tight">Can&apos;t Log In?</h2>
+                  <h2 className="text-2xl font-bold text-black tracking-tight">Forgot Password</h2>
                   <p className="mt-2 text-sm text-gray-600">
                     Enter your email address below and we&apos;ll send you a link to reset your password.
                   </p>
@@ -339,138 +239,6 @@ function LoginForm() {
                   className="w-full bg-black text-white py-3.5 text-xs font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
                 >
                   {isLoading ? <Loader2 size={16} className="animate-spin" /> : 'SEND RESET LINK'}
-                </button>
-              </form>
-            )}
-          </div>
-        ) : phoneStep !== 'closed' ? (
-          /* Phone Number / OTP View */
-          <div className="max-w-md mx-auto py-8">
-            <button
-              onClick={phoneStep === 'otp' ? () => { setPhoneStep('number'); setOtp(''); setErrorMsg(''); setOtpInfo(''); } : closePhoneLogin}
-              className="inline-flex items-center gap-2 text-xs font-bold tracking-widest uppercase text-gray-500 hover:text-black mb-8 transition-colors"
-            >
-              <ArrowLeft size={14} /> {phoneStep === 'otp' ? 'Change phone number' : 'Back to Log In'}
-            </button>
-
-            {errorMsg && (
-              <div className="mb-6 p-3 text-xs bg-red-50 text-red-600 border border-red-200">
-                {errorMsg}
-              </div>
-            )}
-
-            {phoneStep === 'number' ? (
-              <form onSubmit={handleSendOtp} className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-black tracking-tight">Log in with your phone</h2>
-                  <p className="mt-2 text-sm text-gray-600">
-                    We&apos;ll text you a 6-digit code to confirm it&apos;s you.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                    Phone number
-                  </label>
-                  <div className="flex items-stretch gap-2">
-                    <select
-                      value={countryCode}
-                      onChange={(e) => setCountryCode(e.target.value)}
-                      className="border-b border-gray-300 pb-2 text-sm text-black bg-transparent focus:border-black focus:outline-none transition-colors"
-                    >
-                      {COUNTRY_CODES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="relative flex-1">
-                      <Phone size={16} className="absolute left-0 top-2 text-gray-400" />
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        value={phoneDigits}
-                        onChange={(e) => setPhoneDigits(e.target.value.replace(/[^\d]/g, ''))}
-                        placeholder="9876543210"
-                        className="w-full border-b border-gray-300 pb-2 pl-6 text-sm text-black placeholder-gray-400 focus:border-black focus:outline-none transition-colors"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={phoneBusy !== null}
-                  className="w-full bg-black text-white py-3.5 text-xs font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {phoneBusy === 'send' ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" /> SENDING OTP...
-                    </>
-                  ) : (
-                    'SEND OTP'
-                  )}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleVerifyOtp} className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-black tracking-tight">Enter the code</h2>
-                  <p className="mt-2 text-sm text-gray-600">
-                    Sent to <span className="font-semibold text-black">{fullPhone()}</span>.
-                  </p>
-                </div>
-
-                {otpInfo && (
-                  <div className="flex items-center gap-2 p-3 text-xs bg-green-50 text-green-700 border border-green-200">
-                    <ShieldCheck size={14} /> {otpInfo}
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                    6-digit code
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
-                    placeholder="••••••"
-                    className="w-full border-b border-gray-300 pb-2 text-2xl tracking-[0.5em] text-black placeholder-gray-400 focus:border-black focus:outline-none transition-colors"
-                    required
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={phoneBusy !== null}
-                  className="w-full bg-black text-white py-3.5 text-xs font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {phoneBusy === 'verify' ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" /> VERIFYING OTP...
-                    </>
-                  ) : (
-                    'VERIFY OTP'
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleResendOtp}
-                  disabled={resendCooldown > 0 || phoneBusy !== null}
-                  className="w-full text-center text-xs font-bold tracking-widest uppercase text-gray-500 hover:text-black disabled:opacity-50 disabled:hover:text-gray-500 transition-colors flex items-center justify-center gap-2"
-                >
-                  {phoneBusy === 'resend' ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : resendCooldown > 0 ? (
-                    `Resend OTP in ${resendCooldown}s`
-                  ) : (
-                    'Resend OTP'
-                  )}
                 </button>
               </form>
             )}
@@ -567,9 +335,23 @@ function LoginForm() {
                   </div>
 
                   <div className="relative mb-6">
-                    <label className="block text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                      PASSWORD
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-bold tracking-widest text-gray-500 uppercase">
+                        PASSWORD
+                      </label>
+                      {mode === 'login' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForgotOpen(true);
+                            setErrorMsg('');
+                          }}
+                          className="text-[10px] font-bold tracking-wider text-gray-400 hover:text-black uppercase transition-colors"
+                        >
+                          FORGOT PASSWORD?
+                        </button>
+                      )}
+                    </div>
                     <div className="relative flex items-center border-b border-gray-300 focus-within:border-black transition-colors">
                       <input
                         type={showPassword ? 'text' : 'password'}
@@ -669,20 +451,11 @@ function LoginForm() {
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={openPhoneLogin}
-                  disabled={anyBusy}
-                  className="w-full border border-black bg-white py-3.5 px-5 text-xs font-bold text-black hover:bg-black hover:text-white transition-colors duration-200 flex items-center justify-center relative disabled:opacity-50"
-                >
-                  <Phone size={16} className="absolute left-5" />
-                  <span className="w-full text-center pl-4">Continue with Phone Number</span>
-                </button>
               </div>
 
             </div>
 
-            {/* Bottom Link: CAN'T LOG IN? */}
+            {/* Bottom Link: FORGOT PASSWORD? */}
             <div className="mt-16 text-center">
               <button
                 type="button"
@@ -692,7 +465,7 @@ function LoginForm() {
                 }}
                 className="text-[11px] font-bold tracking-widest text-black hover:opacity-60 uppercase transition-opacity"
               >
-                CAN&apos;T LOG IN?
+                FORGOT PASSWORD?
               </button>
             </div>
           </div>

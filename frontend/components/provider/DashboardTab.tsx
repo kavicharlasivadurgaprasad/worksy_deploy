@@ -20,10 +20,13 @@ import {
 } from 'lucide-react';
 import { ProviderJob, ProviderReviewItem } from '@/lib/provider-data';
 import { ProviderMainTab } from './ProviderSidebar';
+import type { ApiProviderSummary } from '@/lib/api';
 
 interface DashboardTabProps {
   jobs: ProviderJob[];
   reviews: ProviderReviewItem[];
+  /** Backend-calculated numbers for this provider (null while loading). */
+  summary: ApiProviderSummary | null;
   onAcceptLead: (jobId: string) => void;
   onDeclineLead: (jobId: string) => void;
   onSelectJob: (job: ProviderJob) => void;
@@ -34,6 +37,7 @@ interface DashboardTabProps {
 export default function DashboardTab({
   jobs,
   reviews,
+  summary,
   onAcceptLead,
   onDeclineLead,
   onSelectJob,
@@ -44,6 +48,18 @@ export default function DashboardTab({
   const newRequests = jobs.filter((j) => j.status === 'New Requests');
   const todayUpcoming = jobs.filter((j) => j.status === 'Upcoming' || j.status === 'Ongoing');
   const completedJobs = jobs.filter((j) => j.status === 'Completed');
+  // Total completed jobs comes from the backend (COMPLETED bookings of this provider, each counted once);
+  // the list length is only a fallback until the summary has loaded. Zero when none.
+  const completedTotal = summary ? summary.completedJobs : completedJobs.length;
+
+  // Jobs actually scheduled for TODAY (real booking dates) and jobs completed today (real completion day).
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const t = new Date();
+  const todayISO = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+  const scheduledToday = jobs.filter(
+    (j) => j.dateISO === todayISO && (j.status === 'Upcoming' || j.status === 'Ongoing' || j.status === 'Completed')
+  );
+  const completedToday = completedJobs.filter((j) => j.completedDateISO === todayISO);
 
   // This month's revenue, computed from real completed booking dates/amounts.
   const now = new Date();
@@ -106,9 +122,6 @@ export default function DashboardTab({
             <span className="font-display text-4xl sm:text-5xl font-medium tracking-tightest text-stone-900">
               {newRequests.length}
             </span>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-              +3 today
-            </span>
           </div>
           <p className="text-xs text-stone-500 mt-2 leading-relaxed">
             Customer inquiries waiting for accept/decline response.
@@ -128,14 +141,17 @@ export default function DashboardTab({
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="font-display text-4xl sm:text-5xl font-medium tracking-tightest text-stone-900">
-              {todayUpcoming.length + 2}
+              {scheduledToday.length}
             </span>
             <span className="text-xs font-bold text-stone-600 bg-stone-100 px-2 py-0.5 rounded-md">
-              2 completed
+              {completedTotal} completed
             </span>
           </div>
           <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-            {todayUpcoming.length} appointments remaining for today.
+            {scheduledToday.length
+              ? `${scheduledToday.length} scheduled for today, ${completedToday.length} completed today.`
+              : 'Nothing scheduled for today.'}{' '}
+            {completedTotal} {completedTotal === 1 ? 'job' : 'jobs'} completed in total.
           </p>
         </div>
 
@@ -231,7 +247,7 @@ export default function DashboardTab({
                       <span>•</span>
                       <span className="flex items-center gap-1 text-stone-500">
                         <MapPin size={12} className="text-rose-500" />
-                        <span>{job.distanceKm} km away</span>
+                        <span>{job.distanceKm > 0 ? `${job.distanceKm} km away` : 'Distance not available'}</span>
                       </span>
                     </div>
                     <p className="text-xs text-stone-500 mt-1 line-clamp-1 italic">
@@ -312,7 +328,7 @@ export default function DashboardTab({
                     </div>
                     <div className="flex items-center gap-1 text-stone-500">
                       <MapPin size={12} className="text-rose-500 shrink-0" />
-                      <span className="truncate">{lead.distanceKm} km • {lead.address}</span>
+                      <span className="truncate">{lead.distanceKm > 0 ? `${lead.distanceKm} km • ` : ''}{lead.address}</span>
                     </div>
                   </div>
 
