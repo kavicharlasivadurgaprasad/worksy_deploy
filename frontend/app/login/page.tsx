@@ -30,6 +30,8 @@ function LoginForm() {
 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [role, setRole] = useState<UserRole>('customer');
+  const roleRef =useRef<UserRole>(role);
+  roleRef.current=role;
 
   // Form states
   const [fullName, setFullName] = useState('');
@@ -52,7 +54,7 @@ function LoginForm() {
     (idToken) => {
       setErrorMsg('');
       setGoogleBusy(true);
-      loginWithGoogle(idToken, role)
+      loginWithGoogle(idToken, roleRef.current)
         .then(redirectForRole)
         .catch((err) => setErrorMsg(err instanceof ApiError ? err.message : 'Google sign-in failed. Please try again.'))
         .finally(() => setGoogleBusy(false));
