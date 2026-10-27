@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   Tag
 } from 'lucide-react';
-import { ProviderOffer, initialOffers } from '@/lib/provider-data';
+import { ProviderOffer } from '@/lib/provider-data';
 
 interface OffersTabProps {
   onOpenCreateOfferModal: () => void;
