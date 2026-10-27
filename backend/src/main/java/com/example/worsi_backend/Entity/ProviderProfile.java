@@ -32,6 +32,10 @@ import lombok.Setter;
 
         private String tagline;
 
+        /** Longer "about the business" text, shown on the provider profile. Optional. */
+        @Column(length = 1000)
+        private String description;
+
         @Column(nullable = false)
         private String category;
 
@@ -56,5 +60,24 @@ import lombok.Setter;
         private boolean verified;
 
         private String badge;
+
+        /** Provider's own base location. NULL until the provider sets it; never guessed. */
+        @Column(name = "latitude")
+        private Double latitude;
+
+        @Column(name = "longitude")
+        private Double longitude;
+
+        /** Max distance this provider is willing to travel. NULL = no provider-side limit. */
+        @Column(name = "service_radius_km")
+        private Double serviceRadiusKm;
+
+        /** Explicit opt-in used by the nearby search. Defaults to false for every provider. */
+        @Column(name = "accepting_bookings", nullable = false)
+        private boolean acceptingBookings = false;
+
+        public boolean hasLocation() {
+            return latitude != null && longitude != null;
+        }
     }
 

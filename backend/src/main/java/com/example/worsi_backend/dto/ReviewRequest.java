@@ -18,5 +18,6 @@ public class ReviewRequest {
     @Max(value = 5, message = "Rating must be at most 5")
     private int rating;
 
+    @jakarta.validation.constraints.Size(max = 1000, message = "Comment must be at most 1000 characters")
     private String comment;
 }

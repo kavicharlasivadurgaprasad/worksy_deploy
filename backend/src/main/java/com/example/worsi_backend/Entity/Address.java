@@ -45,6 +45,10 @@ public class Address {
     @Column(nullable = false)
     private String pincode;
 
+    /** Optional: addresses saved before Edit Profile have no state. */
+    @Column(length = 100)
+    private String state;
+
     @Column(name = "is_default", nullable = false)
     private boolean defaultAddress;
 }

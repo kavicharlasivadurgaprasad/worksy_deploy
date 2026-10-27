@@ -1,3 +1,4 @@
+
 package com.example.worsi_backend.service;
 
 import com.example.worsi_backend.Entity.PasswordResetToken;
@@ -21,21 +22,12 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Optional;
 
-/**
- * Forgot-password / reset-password lifecycle.
- *
- * Token: 32 random bytes from SecureRandom (256 bits), URL-safe Base64. Only its SHA-256 hash is
- * stored. (SHA-256 rather than BCrypt on purpose: the token already has 256 bits of entropy so it
- * cannot be brute-forced, and we must look the row up by hash - BCrypt's per-hash salt would make
- * that impossible. The low-entropy 6-digit phone OTP is the case where BCrypt is needed.)
- *
- * requestReset() never reveals whether the email is registered and never throws for an unknown or
- * rate-limited email. resetPassword() consumes the token with one atomic conditional UPDATE.
- */
 @Service
 public class PasswordResetService {
 
-    static final String INVALID_LINK_MESSAGE = "This password reset link is invalid or has expired. Please request a new one.";
+    static final String INVALID_LINK_MESSAGE =
+            "This password reset link is invalid or has expired. Please request a new one.";
+
     private static final int BCRYPT_MAX_BYTES = 72;
 
     private final UserRepository userRepository;
@@ -50,15 +42,17 @@ public class PasswordResetService {
     private final int requestWindowMinutes;
     private final String frontendBaseUrl;
 
-    public PasswordResetService(UserRepository userRepository,
-                                 PasswordResetTokenRepository tokenRepository,
-                                 PasswordEncoder passwordEncoder,
-                                 EmailService emailService,
-                                 @Value("${app.password-reset.expiry-minutes:30}") int expiryMinutes,
-                                 @Value("${app.password-reset.cooldown-seconds:60}") int cooldownSeconds,
-                                 @Value("${app.password-reset.max-requests-per-window:3}") int maxRequestsPerWindow,
-                                 @Value("${app.password-reset.request-window-minutes:60}") int requestWindowMinutes,
-                                 @Value("${app.frontend.base-url:http://localhost:3000}") String frontendBaseUrl) {
+    public PasswordResetService(
+            UserRepository userRepository,
+            PasswordResetTokenRepository tokenRepository,
+            PasswordEncoder passwordEncoder,
+            EmailService emailService,
+            @Value("${app.password-reset.expiry-minutes:30}") int expiryMinutes,
+            @Value("${app.password-reset.cooldown-seconds:60}") int cooldownSeconds,
+            @Value("${app.password-reset.max-requests-per-window:3}") int maxRequestsPerWindow,
+            @Value("${app.password-reset.request-window-minutes:60}") int requestWindowMinutes,
+            @Value("${app.frontend.base-url:http://localhost:3000}") String frontendBaseUrl) {
+
         this.userRepository = userRepository;
         this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
@@ -71,34 +65,41 @@ public class PasswordResetService {
     }
 
     /**
-     * Step 1. Silent no-op when the email is unknown or the account is rate limited, so the
-     * controller can always return the same response.
+     * Sends a reset email when an eligible account exists.
+     * Unknown and rate-limited accounts receive the same public response.
      */
     @Transactional
     public void requestReset(String rawEmail) {
         String email = rawEmail == null ? "" : rawEmail.trim();
+
         Optional<User> found = userRepository.findByEmail(email);
         if (found.isEmpty()) {
             return;
         }
+
         User user = found.get();
         LocalDateTime now = LocalDateTime.now();
 
-        // Per-account abuse limits (silently skipped, never an error - an error would reveal the account exists).
-        Optional<PasswordResetToken> latest = tokenRepository.findTopByUserIdOrderByCreatedAtDesc(user.getId());
-        if (latest.isPresent() && latest.get().getCreatedAt().plusSeconds(cooldownSeconds).isAfter(now)) {
+        Optional<PasswordResetToken> latest =
+                tokenRepository.findTopByUserIdOrderByCreatedAtDesc(user.getId());
+
+        if (latest.isPresent()
+                && latest.get().getCreatedAt()
+                .plusSeconds(cooldownSeconds).isAfter(now)) {
             return;
         }
-        if (tokenRepository.countByUserIdAndCreatedAtAfter(user.getId(), now.minusMinutes(requestWindowMinutes))
+
+        if (tokenRepository.countByUserIdAndCreatedAtAfter(
+                user.getId(), now.minusMinutes(requestWindowMinutes))
                 >= maxRequestsPerWindow) {
             return;
         }
 
-        // Housekeeping + only the newest link may work.
         tokenRepository.deleteExpiredBefore(now.minusDays(1));
         tokenRepository.invalidateAllForUser(user.getId());
 
         String rawToken = generateToken();
+
         PasswordResetToken token = new PasswordResetToken();
         token.setUser(user);
         token.setTokenHash(hash(rawToken));
@@ -109,66 +110,113 @@ public class PasswordResetService {
         String link = frontendBaseUrl + "/reset-password?token=" + rawToken;
         String to = user.getEmail();
         String name = user.getName();
-        runAfterCommit(() -> emailService.sendPasswordResetEmail(to, name, link));
+
+        runAfterCommit(() ->
+                emailService.sendPasswordResetEmail(to, name, link));
     }
 
-    /** Step 2. Every failure to accept the token yields the same 400 message. */
+    /**
+     * Validates the new password, verifies the reset token,
+     * updates the password and invalidates reset tokens.
+     */
     @Transactional
-    public void resetPassword(String rawToken, String newPassword, String confirmPassword) {
+    public void resetPassword(
+            String rawToken,
+            String newPassword,
+            String confirmPassword) {
+
         if (newPassword == null || !newPassword.equals(confirmPassword)) {
             throw new BadRequestException("Passwords do not match.");
         }
-        if (newPassword.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES) {
-            throw new BadRequestException("Password is too long (maximum 72 bytes).");
+
+        // Repeat important password checks in the service layer.
+        if (newPassword.length() < 8) {
+            throw new BadRequestException(
+                    "Password must be between 8 and 72 characters.");
         }
 
-        PasswordResetToken token = tokenRepository.findByTokenHashWithUser(hash(rawToken.trim()))
-                .orElseThrow(() -> new BadRequestException(INVALID_LINK_MESSAGE));
+        if (newPassword.getBytes(StandardCharsets.UTF_8).length
+                > BCRYPT_MAX_BYTES) {
+            throw new BadRequestException(
+                    "Password is too long (maximum 72 bytes).");
+        }
+
+        boolean hasUppercase =
+                newPassword.chars().anyMatch(Character::isUpperCase);
+
+        boolean hasSpecialCharacter =
+                newPassword.chars().anyMatch(
+                        ch -> !Character.isLetterOrDigit(ch)
+                                && !Character.isWhitespace(ch));
+
+        if (!hasUppercase || !hasSpecialCharacter) {
+            throw new BadRequestException(
+                    "Password must contain at least one uppercase letter "
+                            + "and one special character.");
+        }
+
+        if (rawToken == null || rawToken.isBlank()) {
+            throw new BadRequestException(INVALID_LINK_MESSAGE);
+        }
+
+        PasswordResetToken token =
+                tokenRepository.findByTokenHashWithUser(
+                                hash(rawToken.trim()))
+                        .orElseThrow(() ->
+                                new BadRequestException(INVALID_LINK_MESSAGE));
 
         LocalDateTime now = LocalDateTime.now();
-        // Atomic single-use claim: 0 rows = already used or expired (or a concurrent request won).
+
+        // Atomically claim the token so it can only be used once.
         if (tokenRepository.claimIfValid(token.getId(), now) != 1) {
             throw new BadRequestException(INVALID_LINK_MESSAGE);
         }
 
         User user = token.getUser();
-        user.setPasswordHash(passwordEncoder.encode(newPassword)); // same BCrypt encoder login uses
-        user.setPasswordChangedAt(now); // revokes every JWT issued before this moment
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setPasswordChangedAt(now);
         userRepository.save(user);
 
-        tokenRepository.invalidateAllForUser(user.getId()); // any other outstanding links die too
+        tokenRepository.invalidateAllForUser(user.getId());
 
         String to = user.getEmail();
         String name = user.getName();
-        runAfterCommit(() -> emailService.sendPasswordChangedEmail(to, name));
-    }
 
-    // ------------------------------------------------------------------
+        runAfterCommit(() ->
+                emailService.sendPasswordChangedEmail(to, name));
+    }
 
     private String generateToken() {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(bytes);
     }
 
     static String hash(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(rawToken.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(
+                    digest.digest(rawToken.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is not available", e);
+            throw new IllegalStateException(
+                    "SHA-256 is not available", e);
         }
     }
 
-    /** Sends only if the DB transaction actually committed (so no email for a rolled-back token). */
+    /**
+     * Send email only after the database transaction commits.
+     */
     private void runAfterCommit(Runnable action) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    action.run();
-                }
-            });
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            action.run();
+                        }
+                    });
         } else {
             action.run();
         }

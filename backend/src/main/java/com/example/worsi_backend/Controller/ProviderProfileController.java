@@ -1,6 +1,7 @@
 package com.example.worsi_backend.Controller;
 
 import com.example.worsi_backend.Exception.ForbiddenException;
+import com.example.worsi_backend.dto.ProviderLocationRequest;
 import com.example.worsi_backend.dto.ProviderProfileRequest;
 import com.example.worsi_backend.dto.ProviderProfileResponse;
 import com.example.worsi_backend.security.SecurityUtil;
@@ -31,6 +32,16 @@ public class ProviderProfileController {
         }
         ProviderProfileResponse response = providerProfileService.createProfile(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /** A provider sets their own base location, service radius and availability. Owner only. */
+    @PutMapping("/location")
+    public ProviderProfileResponse updateLocation(@PathVariable Long userId,
+                                                  @Valid @RequestBody ProviderLocationRequest request) {
+        if (!userId.equals(securityUtil.getCurrentUserId())) {
+            throw new ForbiddenException("You can only update your own location");
+        }
+        return providerProfileService.updateLocation(userId, request);
     }
 
     @GetMapping

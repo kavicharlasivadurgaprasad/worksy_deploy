@@ -36,6 +36,7 @@ public class AddressService {
         address.setArea(request.getArea());
         address.setCity(request.getCity());
         address.setPincode(request.getPincode());
+        address.setState(request.getState() == null || request.getState().isBlank() ? null : request.getState().trim());
         // First address is always the default; an explicit default un-defaults the others.
         boolean makeDefault = request.isDefaultAddress() || addressRepository.findByUserId(userId).isEmpty();
         if (makeDefault) {

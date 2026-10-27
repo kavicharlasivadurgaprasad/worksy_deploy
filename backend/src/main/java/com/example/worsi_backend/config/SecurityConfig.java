@@ -74,8 +74,14 @@ public class SecurityConfig {
                         // Read-only catalog is public. Writes (e.g. POST /services) require a JWT.
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/services/**").permitAll()
+                        // Nearby search takes the customer's coordinates, so it requires a JWT.
+                        // This matcher must stay ABOVE the public /providers/** rule below.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/providers/nearby").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/providers/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/reviews/provider/**").permitAll()
+                        // Profile pictures are shown in <img> tags (headers, chat), which cannot send a JWT.
+                        // Only the picture a user chose to upload is served, under a random storage key.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/users/*/avatar").permitAll()
                         // The WebSocket handshake carries its JWT as a "token" query parameter
                         // (browsers cannot set custom headers on a WS upgrade), so it is
                         // authenticated by JwtHandshakeInterceptor instead of the header-based

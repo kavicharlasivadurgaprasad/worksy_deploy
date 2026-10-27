@@ -3,6 +3,7 @@ package com.example.worsi_backend.dto;
 import com.example.worsi_backend.Entity.AddressLabel;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -24,6 +25,9 @@ public class AddressRequest {
 
     @NotBlank(message = "Pincode is required")
     private String pincode;
+
+    @Size(max = 100, message = "State cannot exceed 100 characters")
+    private String state;
 
     private boolean defaultAddress;
 }

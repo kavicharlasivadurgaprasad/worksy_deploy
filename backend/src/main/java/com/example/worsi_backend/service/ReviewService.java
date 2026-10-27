@@ -4,11 +4,9 @@ import com.example.worsi_backend.dto.ReviewRequest;
 import com.example.worsi_backend.dto.ReviewResponse;
 import com.example.worsi_backend.Entity.Booking;
 import com.example.worsi_backend.Entity.BookingStatus;
-import com.example.worsi_backend.Entity.ProviderProfile;
 import com.example.worsi_backend.Entity.Review;
 import com.example.worsi_backend.Exception.ResourceNotFoundException;
 import com.example.worsi_backend.repository.BookingRepository;
-import com.example.worsi_backend.repository.ProviderProfileRepository;
 import com.example.worsi_backend.repository.ReviewRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,14 +20,11 @@ public class ReviewService {
 
     private final ReviewRepository reviewRepository;
     private final BookingRepository bookingRepository;
-    private final ProviderProfileRepository providerProfileRepository;
 
     public ReviewService(ReviewRepository reviewRepository,
-                         BookingRepository bookingRepository,
-                         ProviderProfileRepository providerProfileRepository) {
+                         BookingRepository bookingRepository) {
         this.reviewRepository = reviewRepository;
         this.bookingRepository = bookingRepository;
-        this.providerProfileRepository = providerProfileRepository;
     }
 
     public ReviewResponse submitReview(ReviewRequest request) {
@@ -52,9 +47,9 @@ public class ReviewService {
         review.setComment(request.getComment());
         review.setCreatedAt(LocalDateTime.now());
 
+        // The provider's rating and review count are computed from the reviews table when read
+        // (ProviderStatsService), so there is no stored average to update here.
         Review saved = reviewRepository.save(review);
-
-        recalculateProviderRating(booking.getProvider().getId());
 
         return new ReviewResponse(saved);
     }
@@ -63,20 +58,5 @@ public class ReviewService {
         return reviewRepository.findByBooking_ProviderId(providerId).stream()
                 .map(ReviewResponse::new)
                 .toList();
-    }
-
-    private void recalculateProviderRating(Long providerId) {
-        List<Review> providerReviews = reviewRepository.findByBooking_ProviderId(providerId);
-
-        double averageRating = providerReviews.stream()
-                .mapToInt(Review::getRating)
-                .average()
-                .orElse(0.0);
-
-        ProviderProfile provider = providerProfileRepository.findById(providerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Provider not found with id: " + providerId));
-
-        provider.setRating(averageRating);
-        providerProfileRepository.save(provider);
     }
 }

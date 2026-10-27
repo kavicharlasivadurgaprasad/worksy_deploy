@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -15,9 +16,13 @@ public class BookingResponse {
     private final Long id;
     private final Long customerId;
     private final String customerName;
+    /** Customer's saved profile picture (path relative to the API base), or null. */
+    private final String customerAvatarUrl;
     private final Long providerId;
     private final Long providerUserId;
     private final String providerBusinessName;
+    /** Provider's saved profile picture (path relative to the API base), or null. */
+    private final String providerAvatarUrl;
     private final Long serviceId;
     private final String serviceTitle;
     private final Long addressId;
@@ -36,8 +41,13 @@ public class BookingResponse {
     private final BigDecimal totalAmount;
     private final String paymentMethod;
     private final BookingStatus status;
+    /** Exact moment the booking was marked COMPLETED; null if not completed or completed before this was recorded. */
+    private final Instant completedAt;
+    /** Calendar day of completedAt in the application time zone (set by BookingService); null when completedAt is null. */
+    @Setter private LocalDate completedDate;
     @Setter private String otp;   // hidden (null) in provider-facing responses
     private final List<BookingAddonResponse> addons;
+    private final List<BookingImageResponse> images;
 
     // Populated by BookingService (needs a review lookup, not available from the Booking entity alone)
     @Setter private boolean reviewed;
@@ -48,9 +58,11 @@ public class BookingResponse {
         this.id = booking.getId();
         this.customerId = booking.getCustomer().getId();
         this.customerName = booking.getCustomer().getName();
+        this.customerAvatarUrl = booking.getCustomer().getAvatarUrl();
         this.providerId = booking.getProvider().getId();
         this.providerUserId = booking.getProvider().getUser().getId();
         this.providerBusinessName = booking.getProvider().getBusinessName();
+        this.providerAvatarUrl = booking.getProvider().getUser().getAvatarUrl();
         this.serviceId = booking.getService().getId();
         this.serviceTitle = booking.getService().getTitle();
         this.addressId = booking.getAddress().getId();
@@ -69,9 +81,13 @@ public class BookingResponse {
         this.totalAmount = booking.getTotalAmount();
         this.paymentMethod = booking.getPaymentMethod();
         this.status = booking.getStatus();
+        this.completedAt = booking.getCompletedAt();
         this.otp = booking.getOtp();
         this.addons = booking.getBookingAddons().stream()
                 .map(BookingAddonResponse::new)
+                .toList();
+        this.images = booking.getImages().stream()
+                .map(BookingImageResponse::new)
                 .toList();
     }
 }

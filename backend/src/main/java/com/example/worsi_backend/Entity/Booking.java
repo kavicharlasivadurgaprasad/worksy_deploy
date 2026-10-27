@@ -18,6 +18,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -77,6 +78,17 @@ public class Booking {
     @Column(nullable = false)
     private String otp;
 
+    /**
+     * The moment this booking was genuinely marked COMPLETED (IN_PROGRESS -> COMPLETED). NULL while the
+     * booking is not completed, and NULL for bookings completed before this column existed: a missing
+     * completion time is never guessed from the scheduled date.
+     */
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<BookingAddon> bookingAddons = new ArrayList<>();
+
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<BookingImage> images = new ArrayList<>();
 }

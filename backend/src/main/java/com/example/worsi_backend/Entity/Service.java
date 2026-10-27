@@ -37,7 +37,11 @@ public class Service {
     @Column(nullable = false)
     private String title;
 
-    @Column(nullable = false)
+    /**
+     * LEGACY reference value from the old single-price catalogue. It is NOT used for listing, booking or
+     * earnings any more: each provider's own price lives in ProviderServicePrice. Nullable on purpose.
+     */
+    @Column
     private BigDecimal price;
 
     @Column(nullable = false)

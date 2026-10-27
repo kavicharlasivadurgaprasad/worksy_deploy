@@ -45,8 +45,13 @@ import lombok.Setter;
         // login is instead enforced in AuthService before a new account is created.
         private String phone;
 
+        /** Public URL path of the profile picture, relative to the API base (e.g. /users/7/avatar?v=...). NULL = none. */
         @Column(name = "avatar_url")
         private String avatarUrl;
+
+        /** Where the picture bytes live in ImageStorage. Server-generated; never sent to clients. */
+        @Column(name = "avatar_storage_key")
+        private String avatarStorageKey;
 
         // --- Added for social/phone login (Google, Apple, Phone OTP) ---
 

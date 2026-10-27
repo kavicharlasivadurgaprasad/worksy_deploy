@@ -5,23 +5,36 @@ import com.example.worsi_backend.dto.BookingResponse;
 import com.example.worsi_backend.Entity.*;
 import com.example.worsi_backend.Exception.BadRequestException;
 import com.example.worsi_backend.Exception.ForbiddenException;
+import com.example.worsi_backend.Exception.ImageStorageException;
 import com.example.worsi_backend.Exception.ResourceNotFoundException;
 import com.example.worsi_backend.repository.*;
+import com.example.worsi_backend.service.BookingImageValidator.ValidatedImage;
+import com.example.worsi_backend.storage.ImageStorage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @Transactional
 public class BookingService {
+
+    private static final Logger log = LoggerFactory.getLogger(BookingService.class);
 
     /** Time zone in which "today" and "now" are evaluated for bookings. Override with APP_TIMEZONE / app.timezone. */
     @Value("${app.timezone:Asia/Kolkata}")
@@ -41,6 +54,9 @@ public class BookingService {
     private final AddressRepository addressRepository;
     private final ServiceAddonRepository serviceAddonRepository;
     private final ReviewRepository reviewRepository;
+    private final ProviderServicePriceRepository providerServicePriceRepository;
+    private final BookingImageValidator imageValidator;
+    private final ImageStorage imageStorage;
 
     public BookingService(BookingRepository bookingRepository,
                           UserRepository userRepository,
@@ -48,7 +64,10 @@ public class BookingService {
                           ServiceRepository serviceRepository,
                           AddressRepository addressRepository,
                           ServiceAddonRepository serviceAddonRepository,
-                          ReviewRepository reviewRepository) {
+                          ReviewRepository reviewRepository,
+                          ProviderServicePriceRepository providerServicePriceRepository,
+                          BookingImageValidator imageValidator,
+                          ImageStorage imageStorage) {
         this.bookingRepository = bookingRepository;
         this.userRepository = userRepository;
         this.providerProfileRepository = providerProfileRepository;
@@ -56,9 +75,22 @@ public class BookingService {
         this.addressRepository = addressRepository;
         this.serviceAddonRepository = serviceAddonRepository;
         this.reviewRepository = reviewRepository;
+        this.providerServicePriceRepository = providerServicePriceRepository;
+        this.imageValidator = imageValidator;
+        this.imageStorage = imageStorage;
     }
 
     public BookingResponse createBooking(BookingRequest request) {
+        return createBooking(request, List.of());
+    }
+
+    /**
+     * Creates a booking with optional problem photos. Images are validated BEFORE anything is written;
+     * if storing an image fails, files already written are removed and the booking transaction rolls
+     * back; if the transaction fails later (e.g. at commit), a synchronization removes the files.
+     */
+    public BookingResponse createBooking(BookingRequest request, List<MultipartFile> imageFiles) {
+        List<ValidatedImage> images = imageValidator.validate(imageFiles);
         User customer = userRepository.findById(request.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Customer not found with id: " + request.getCustomerId()));
@@ -88,6 +120,14 @@ public class BookingService {
                     + "' does not offer services in category '" + service.getCategory().getName() + "'");
         }
 
+        // The price is looked up here, from the provider's own configured price. Nothing the client sends
+        // can change it (BookingRequest has no price field). A provider who has not priced this service
+        // cannot be booked for it: there is no default price.
+        ProviderServicePrice providerPrice = providerServicePriceRepository
+                .findByProviderIdAndServiceId(provider.getId(), service.getId())
+                .orElseThrow(() -> new BadRequestException("'" + provider.getBusinessName()
+                        + "' has not set a price for '" + service.getTitle() + "' yet, so it cannot be booked."));
+
         Booking booking = new Booking();
         booking.setCustomer(customer);
         booking.setProvider(provider);
@@ -100,7 +140,8 @@ public class BookingService {
         booking.setStatus(BookingStatus.PENDING);
         booking.setOtp(generateOtp());
 
-        BigDecimal basePrice = service.getPrice();
+        // Snapshot: this value is copied into the booking, so later price changes never touch it.
+        BigDecimal basePrice = providerPrice.getPrice();
         BigDecimal addonsTotal = BigDecimal.ZERO;
 
         List<Long> addonIds = request.getAddonIds() == null ? List.of() : request.getAddonIds();
@@ -127,8 +168,51 @@ public class BookingService {
         booking.setAddonsTotal(addonsTotal);
         booking.setTotalAmount(basePrice.add(addonsTotal));
 
-        Booking saved = bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);   // IDENTITY: id is assigned here
+        attachImages(saved, images);
         return toResponse(saved);
+    }
+
+    private void attachImages(Booking booking, List<ValidatedImage> images) {
+        if (images.isEmpty()) {
+            return;
+        }
+
+        List<String> storedKeys = new ArrayList<>();
+
+        // If the surrounding transaction does not commit (DB error at flush/commit, later exception),
+        // remove every file written for this booking so nothing is orphaned.
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    if (status != STATUS_COMMITTED) {
+                        storedKeys.forEach(imageStorage::deleteQuietly);
+                    }
+                }
+            });
+        }
+
+        try {
+            for (ValidatedImage image : images) {
+                String key = "bookings/" + booking.getId() + "/" + UUID.randomUUID() + "." + image.extension();
+                imageStorage.store(key, image.data(), image.contentType());
+                storedKeys.add(key);
+
+                BookingImage entity = new BookingImage();
+                entity.setBooking(booking);
+                entity.setStorageKey(key);
+                entity.setOriginalFilename(image.displayName());
+                entity.setContentType(image.contentType());
+                entity.setSizeBytes((long) image.data().length);
+                booking.getImages().add(entity);
+            }
+        } catch (Exception e) {
+            // Partial upload: delete what was written, then abort (the @Transactional rolls the booking back).
+            storedKeys.forEach(imageStorage::deleteQuietly);
+            log.error("Image storage failed for booking {}", booking.getId(), e);
+            throw new ImageStorageException("Could not store the attached images. Please try again.", e);
+        }
     }
 
     public List<BookingResponse> getBookingsForCustomer(Long customerId) {
@@ -196,10 +280,9 @@ public class BookingService {
         }
 
         booking.setStatus(BookingStatus.COMPLETED);
-
-        ProviderProfile provider = booking.getProvider();
-        provider.setCompletedJobs(provider.getCompletedJobs() + 1);
-        providerProfileRepository.save(provider);
+        // The real completion moment. The completed-job count is derived from COMPLETED bookings when
+        // read, so no counter is incremented here.
+        booking.setCompletedAt(Instant.now());
 
         return toProviderResponse(bookingRepository.save(booking));
     }
@@ -251,6 +334,10 @@ public class BookingService {
 
     private BookingResponse toResponse(Booking booking) {
         BookingResponse response = new BookingResponse(booking);
+        if (booking.getCompletedAt() != null) {
+            // Calendar day of completion in the application time zone (not the viewer's browser zone).
+            response.setCompletedDate(booking.getCompletedAt().atZone(ZoneId.of(appTimezone)).toLocalDate());
+        }
         if (booking.getId() != null) {
             reviewRepository.findByBookingId(booking.getId()).ifPresent(r -> {
                 response.setReviewed(true);

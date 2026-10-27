@@ -3,11 +3,9 @@ package com.example.worsi_backend.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,9 +19,7 @@ public class ServiceRequest {
     @NotBlank(message = "Title is required")
     private String title;
 
-    @NotNull(message = "Price is required")
-    @Positive(message = "Price must be positive")
-    private BigDecimal price;
+    // No price here: prices belong to providers (PUT /users/{id}/provider-profile/services/{serviceId}/price).
 
     @NotBlank(message = "Duration is required")
     private String duration;

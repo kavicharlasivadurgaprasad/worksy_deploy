@@ -13,6 +13,7 @@ public class AddressResponse {
     private final String area;
     private final String city;
     private final String pincode;
+    private final String state;
     private final boolean defaultAddress;
 
     public AddressResponse(Address address) {
@@ -22,6 +23,7 @@ public class AddressResponse {
         this.area = address.getArea();
         this.city = address.getCity();
         this.pincode = address.getPincode();
+        this.state = address.getState();
         this.defaultAddress = address.isDefaultAddress();
     }
 }

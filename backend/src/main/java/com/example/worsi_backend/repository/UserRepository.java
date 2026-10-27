@@ -20,6 +20,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByPhone(String phone);
 
+    /** True if ANOTHER account already holds this number (works even if legacy data has duplicates). */
+    boolean existsByPhoneAndIdNot(String phone, Long id);
+
     Optional<User> findByGoogleId(String googleId);
 
     /** Lightweight lookup used by the JWT filter; empty when the user has never reset a password. */

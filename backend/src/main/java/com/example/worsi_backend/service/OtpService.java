@@ -89,8 +89,14 @@ public class OtpService {
         smsSender.send(phone, "Your Worksy verification code is " + code + ". It expires in " + expiryMinutes + " minutes.");
     }
 
-    /** Throws if the code is missing/expired/wrong/over-attempted; returns normally on success. */
-    @Transactional
+    /**
+     * Throws if the code is missing/expired/wrong/over-attempted; returns normally on success.
+     *
+     * noRollbackFor: this method saves the attempt counter / consumed flag and THEN throws. With the
+     * default rules the exception rolls that save back, so wrong guesses would never be counted.
+     * (Callers must not wrap this call in a transaction that rolls back on the same exceptions.)
+     */
+    @Transactional(noRollbackFor = {BadRequestException.class, UnauthorizedException.class, TooManyRequestsException.class})
     public void verifyOtp(String phone, String code) {
         PhoneOtp otp = otpRepository.findTopByPhoneOrderByCreatedAtDesc(phone)
                 .orElseThrow(() -> new BadRequestException("No OTP was requested for this phone number."));
